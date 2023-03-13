@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Svelte.Net", "Svelte.Net\Svelte.Net.csproj", "{AA6422E9-11DE-4CF3-9268-563663BA28CD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Svelte.Net.Core", "Svelte.Net.Core\Svelte.Net.Core.csproj", "{1C69714C-40E4-48DA-8D50-8CDA376FDD6C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AA6422E9-11DE-4CF3-9268-563663BA28CD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA6422E9-11DE-4CF3-9268-563663BA28CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA6422E9-11DE-4CF3-9268-563663BA28CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA6422E9-11DE-4CF3-9268-563663BA28CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C69714C-40E4-48DA-8D50-8CDA376FDD6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C69714C-40E4-48DA-8D50-8CDA376FDD6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C69714C-40E4-48DA-8D50-8CDA376FDD6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C69714C-40E4-48DA-8D50-8CDA376FDD6C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
