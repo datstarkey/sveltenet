@@ -4,6 +4,12 @@
         <TargetFramework>net6.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <Title>Svelte.Net </Title>
+        <Authors>Jake Starkey</Authors>
+        <Description>Svelte style Razor Pages</Description>
+        <PackageProjectUrl>https://github.com/datstarkey/sveltenet</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/datstarkey/sveltenet</RepositoryUrl>
+        <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     </PropertyGroup>
 
 
