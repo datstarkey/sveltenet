@@ -9,7 +9,6 @@
         <Description>Svelte style Razor Pages</Description>
         <PackageProjectUrl>https://github.com/datstarkey/sveltenet</PackageProjectUrl>
         <RepositoryUrl>https://github.com/datstarkey/sveltenet</RepositoryUrl>
-        <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     </PropertyGroup>
 
 
