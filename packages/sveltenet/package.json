@@ -21,6 +21,11 @@
 			"types": "./client.d.ts",
 			"default": "./client.js"
 		},
+		"./remote": {
+			"types": "./remote.svelte.d.ts",
+			"svelte": "./remote.svelte.js",
+			"default": "./remote.svelte.js"
+		},
 		"./server": {
 			"types": "./server.d.ts",
 			"default": "./server.js"

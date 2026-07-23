@@ -27,6 +27,14 @@ namespace SvelteNet.AspNetCore.Tests.Fixtures
 		public required string Heading { get; set; }
 		public List<Widget> Widgets { get; set; } = [];
 	}
+
+	[SvelteRemote]
+	public class WidgetApi
+	{
+		[Query] public List<Widget> Search(string term, int limit) => [];
+		[Command] public void Clear() { }
+		[Form] public Task<int> Save(Widget widget) => Task.FromResult(0);
+	}
 }
 
 namespace SvelteNet.AspNetCore.Tests.Fixtures.Pages

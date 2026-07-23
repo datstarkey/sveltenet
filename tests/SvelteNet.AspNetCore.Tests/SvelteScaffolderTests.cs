@@ -17,7 +17,7 @@ public class SvelteScaffolderTests : IDisposable
 
 	public void Dispose() => Directory.Delete(_root, recursive: true);
 
-	private void Run() => SvelteScaffolder.Run(_options, [typeof(HomeModel), typeof(UsersModel)], [typeof(CardViewModel)]);
+	private void Run() => SvelteScaffolder.Run(_options, [typeof(HomeModel), typeof(UsersModel)], [typeof(CardViewModel)], [typeof(WidgetApi)]);
 
 	private string ReadSvelteFile(params string[] segments) =>
 		File.ReadAllText(Path.Combine([_root, "Svelte", .. segments]));
@@ -126,6 +126,19 @@ public class SvelteScaffolderTests : IDisposable
 		var component = ReadSvelteFile("Components", "Card.svelte");
 		Assert.Contains("import type { CardViewModel } from '../types';", component);
 		Assert.Contains("let { data }: { data: CardViewModel } = $props();", component);
+	}
+
+	[Fact]
+	public void Remote_services_get_a_kit_style_typed_client()
+	{
+		Run();
+
+		var remote = ReadSvelteFile("remote.ts");
+		Assert.Contains("import { command, form, query } from 'sveltenet/remote';", remote);
+		Assert.Contains("import type { Widget } from './types';", remote);
+		Assert.Contains("export const search = query<Widget[], [term: string, limit: number]>('WidgetApi/Search', (term, limit) => ({ term, limit }));", remote);
+		Assert.Contains("export const clear = command<void>('WidgetApi/Clear');", remote);
+		Assert.Contains("export const save = form<number, { widget: Widget }>('WidgetApi/Save');", remote);
 	}
 
 	[Fact]

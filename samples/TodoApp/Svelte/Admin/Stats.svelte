@@ -1,9 +1,16 @@
 <script lang="ts">
+	import { getStats } from '../remote';
 	import type { StatsData } from './Stats.types';
 
 	let { data }: { data: StatsData } = $props();
 
-	let percent = $derived(data.total === 0 ? 0 : Math.round((data.completed / data.total) * 100));
+	// SSR shows the page props; the query takes over client-side and can refresh.
+	const stats = getStats();
+
+	let total = $derived(stats.current?.total ?? data.total);
+	let completed = $derived(stats.current?.completed ?? data.completed);
+	let byPriority = $derived(stats.current?.byPriority ?? data.byPriority);
+	let percent = $derived(total === 0 ? 0 : Math.round((completed / total) * 100));
 </script>
 
 <svelte:head>
@@ -12,12 +19,13 @@
 
 <main>
 	<h1>Stats</h1>
-	<p>{data.completed} / {data.total} done ({percent}%)</p>
+	<p>{completed} / {total} done ({percent}%)</p>
 	<ul>
-		{#each Object.entries(data.byPriority) as [priority, count] (priority)}
+		{#each Object.entries(byPriority) as [priority, count] (priority)}
 			<li>{priority}: {count}</li>
 		{/each}
 	</ul>
+	<button onclick={() => stats.refresh()} disabled={stats.loading}>refresh</button>
 </main>
 
 <style>

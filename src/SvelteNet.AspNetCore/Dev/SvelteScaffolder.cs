@@ -11,17 +11,19 @@ using System.Reflection;
 /// </summary>
 public static class SvelteScaffolder
 {
-	public static void Run(SvelteOptions options, IReadOnlyList<Type>? pageTypes = null, IReadOnlyList<Type>? componentModelTypes = null)
+	public static void Run(SvelteOptions options, IReadOnlyList<Type>? pageTypes = null, IReadOnlyList<Type>? componentModelTypes = null, IReadOnlyList<Type>? remoteServiceTypes = null)
 	{
 		var svelteDir = Path.Combine(options.ContentRoot, options.PagesPath);
 		Directory.CreateDirectory(svelteDir);
 
-		var pages = pageTypes?.ToList() ?? FindTypes(t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract);
-		var componentModels = componentModelTypes?.ToList() ?? FindTypes(t => t.IsDefined(typeof(SvelteComponentAttribute), false));
+		var pages = pageTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract);
+		var componentModels = componentModelTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsDefined(typeof(SvelteComponentAttribute), false));
+		var remoteServices = remoteServiceTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsDefined(typeof(SvelteRemoteAttribute), false));
 
-		WriteSharedTypes(svelteDir, pages, componentModels);
+		WriteSharedTypes(svelteDir, pages, componentModels, remoteServices);
 		foreach (var page in pages) ScaffoldPage(svelteDir, page);
 		foreach (var model in componentModels) ScaffoldComponentModel(svelteDir, model);
+		WriteRemoteClient(svelteDir, remoteServices);
 
 		WriteIfMissing(Path.Combine(svelteDir, "mount.ts"), SvelteTemplates.MountTs);
 		WriteIfMissing(Path.Combine(svelteDir, "render.ts"), SvelteTemplates.RenderTs);
@@ -30,37 +32,23 @@ public static class SvelteScaffolder
 		WriteRouteIds(options, svelteDir);
 	}
 
-	private static List<Type> FindTypes(Func<Type, bool> predicate)
-	{
-		return AppDomain.CurrentDomain.GetAssemblies()
-			.Where(a => !a.IsDynamic)
-			.SelectMany(GetLoadableTypes)
-			.Where(predicate)
-			.ToList();
-	}
-
-	private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
-	{
-		try
-		{
-			return assembly.GetTypes();
-		}
-		catch (ReflectionTypeLoadException e)
-		{
-			return e.Types.Where(t => t != null)!;
-		}
-	}
-
 	private static PropertyInfo[] SvelteProps(Type type) => type
 		.GetProperties()
 		.Where(p => p.IsDefined(typeof(SveltePropAttribute), true))
 		.ToArray();
 
-	private static void WriteSharedTypes(string svelteDir, List<Type> pages, List<Type> componentModels)
+	private static void WriteSharedTypes(string svelteDir, List<Type> pages, List<Type> componentModels, List<Type> remoteServices)
 	{
+		var remoteTypes = remoteServices
+			.Select(SvelteNet.Remote.SvelteRemoteDescriptors.For)
+			.SelectMany(d => d.Methods)
+			.SelectMany(m => m.Parameters.Select(p => p.Type).Append(m.ReturnType))
+			.Where(t => t != typeof(void) && t != typeof(CancellationToken));
+
 		var rootTypes = pages.SelectMany(SvelteProps)
 			.Select(p => p.PropertyType)
 			.Concat(componentModels)
+			.Concat(remoteTypes)
 			.Distinct()
 			.ToList();
 
@@ -124,6 +112,76 @@ export interface {{name}}Data {
 		var typesImport = depth == 0 ? "./types" : string.Concat(Enumerable.Repeat("../", depth)) + "types";
 
 		WriteIfMissing(path, SvelteTemplates.ComponentModelPage(model.TsType(), typesImport));
+	}
+
+	/// <summary>
+	/// Generates the typed remote-function client, mirroring SvelteKit's remote
+	/// functions: one flat export per [Query]/[Command]/[Form] method. Regenerated
+	/// every run.
+	/// </summary>
+	private static void WriteRemoteClient(string svelteDir, List<Type> remoteServices)
+	{
+		if (remoteServices.Count == 0) return;
+
+		var imports = new SortedSet<string>(StringComparer.Ordinal);
+		var usedKinds = new SortedSet<string>(StringComparer.Ordinal);
+		var exports = new List<string>();
+
+		var methods = remoteServices
+			.Select(SvelteNet.Remote.SvelteRemoteDescriptors.For)
+			.SelectMany(d => d.Methods.Select(m => (Service: d.Name, Method: m)))
+			.OrderBy(x => x.Method.Name, StringComparer.Ordinal);
+
+		foreach (var (service, method) in methods)
+		{
+			foreach (var p in method.Parameters) CollectImports(p.Type, imports);
+			if (method.ReturnType != typeof(void)) CollectImports(method.ReturnType, imports);
+
+			var tsReturn = method.ReturnType == typeof(void) ? "void" : method.ReturnType.TsType();
+			var name = method.Name.ToCamelCase();
+			var path = $"{service}/{method.Name}";
+
+			exports.Add(method.Kind switch
+			{
+				RemoteKind.Form => FormExport(name, path, tsReturn, method.Parameters),
+				_ => CallableExport(method.Kind == RemoteKind.Query ? "query" : "command", name, path, tsReturn, method.Parameters)
+			});
+			usedKinds.Add(method.Kind switch
+			{
+				RemoteKind.Query => "query",
+				RemoteKind.Command => "command",
+				_ => "form"
+			});
+		}
+
+		var importLine = imports.Count == 0
+			? string.Empty
+			: $"import type {{ {string.Join(", ", imports)} }} from './types';{Environment.NewLine}";
+
+		File.WriteAllText(Path.Combine(svelteDir, "remote.ts"), $$"""
+/* eslint-disable */
+// Generated by SvelteNet — do not edit.
+import { {{string.Join(", ", usedKinds)}} } from 'sveltenet/remote';
+{{importLine}}
+{{string.Join(Environment.NewLine, exports)}}
+""");
+	}
+
+	private static string CallableExport(string kind, string name, string path, string tsReturn, SvelteNet.Remote.RemoteParameter[] parameters)
+	{
+		if (parameters.Length == 0)
+			return $"export const {name} = {kind}<{tsReturn}>('{path}');";
+
+		var tuple = string.Join(", ", parameters.Select(p => $"{p.Name}: {p.Type.TsType()}"));
+		var names = string.Join(", ", parameters.Select(p => p.Name));
+		return $"export const {name} = {kind}<{tsReturn}, [{tuple}]>('{path}', ({names}) => ({{ {names} }}));";
+	}
+
+	private static string FormExport(string name, string path, string tsReturn, SvelteNet.Remote.RemoteParameter[] parameters)
+	{
+		var fields = string.Join("; ", parameters.Select(p => $"{p.Name}: {p.Type.TsType()}"));
+		var fieldsType = parameters.Length == 0 ? "{}" : $"{{ {fields} }}";
+		return $"export const {name} = form<{tsReturn}, {fieldsType}>('{path}');";
 	}
 
 	/// <summary>Collects the named types a page's data interface must import from the shared types file.</summary>

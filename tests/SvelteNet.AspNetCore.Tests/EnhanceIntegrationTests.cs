@@ -1,29 +1,14 @@
 namespace SvelteNet.AspNetCore.Tests;
 
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
 /// <summary>
 /// Full-stack tests of the enhance() HTTP protocol against the real TodoApp sample:
 /// routing, model binding, antiforgery, and the JSON rewriting in SveltePage.
-/// Runs in dev mode (no Vite build required) with scaffolding disabled so the
-/// sample's source tree is never touched.
 /// </summary>
-public class EnhanceIntegrationTests : IClassFixture<EnhanceIntegrationTests.TodoAppFactory>
+public class EnhanceIntegrationTests : IClassFixture<TodoAppFactory>
 {
-	public class TodoAppFactory : WebApplicationFactory<Program>
-	{
-		protected override void ConfigureWebHost(IWebHostBuilder builder)
-		{
-			builder.UseEnvironment("Development");
-			builder.ConfigureTestServices(services =>
-				services.AddSingleton(new SvelteOptions { IsDev = true, EnableScaffolding = false }));
-		}
-	}
-
 	private readonly TodoAppFactory _factory;
 
 	public EnhanceIntegrationTests(TodoAppFactory factory)

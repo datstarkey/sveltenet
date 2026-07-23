@@ -17,12 +17,7 @@ public class SvelteRenderer
 		_ssrEngine = ssrEngine;
 	}
 
-	public static readonly JsonSerializerOptions JsonOptions = new()
-	{
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-		DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
-		Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-	};
+	public static readonly JsonSerializerOptions JsonOptions = SvelteJson.Options;
 
 	/// <summary>Renders a component with a SvelteKit-style single "data" prop.</summary>
 	public SvelteRenderResult Render(string component, object? data = null, string? elementId = null)

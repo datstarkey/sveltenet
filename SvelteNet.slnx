@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/SvelteNet.AspNetCore/SvelteNet.AspNetCore.csproj" />
     <Project Path="src/SvelteNet.Core/SvelteNet.Core.csproj" />
+    <Project Path="src/SvelteNet.Generators/SvelteNet.Generators.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SvelteNet.AspNetCore.Tests/SvelteNet.AspNetCore.Tests.csproj" />

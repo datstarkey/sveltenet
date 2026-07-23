@@ -189,6 +189,51 @@ Renders are cached per request so a `Svelte`/`SvelteHead` pair renders once. To 
 @Html.Svelte("Components/Card", Model.ProductB, elementId: "card-b")
 ```
 
+## Remote functions
+
+SvelteKit-style typed RPC to C# — no fetch routes. Mark a class `[SvelteRemote]` and its methods `[Query]`, `[Command]`, or `[Form]`:
+
+```csharp
+[SvelteRemote]
+public class TodoApi(TodoStore store)
+{
+    [Query]   public IReadOnlyList<Todo> GetTodos() => store.All;
+    [Command] public void ToggleTodo(int id) => store.Toggle(id);
+    [Form]    public Task<Todo> CreateTodo(string label, Priority priority)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            throw new RemoteInvalidException(nameof(label), "A label is required.");
+        // ...
+    }
+}
+```
+
+The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Generators** (a Roslyn source generator) compiles the dispatchers — argument binding and invocation are generated code, no reflection (a reflection fallback covers projects without the analyzer):
+
+```svelte
+<script lang="ts">
+    import { createTodo, getStats, getTodos, toggleTodo } from './remote';
+
+    const todos = getTodos();     // cached + deduped: getTodos() === getTodos()
+</script>
+
+{#if todos.loading}<p>loading…</p>
+{:else}
+    {#each todos.current ?? [] as todo (todo.id)}
+        <button onclick={() => toggleTodo(todo.id).updates(todos, getStats())}>toggle</button>
+    {/each}
+{/if}
+
+<form {...createTodo}>
+    {#each createTodo.fields.label.issues() ?? [] as issue}<p>{issue.message}</p>{/each}
+    <input {...createTodo.fields.label.as('text')} />
+    <button disabled={!!createTodo.pending}>Add</button>
+</form>
+{#if createTodo.result}<p>Added!</p>{/if}
+```
+
+Semantics mirror SvelteKit: queries are GET, cached, with `current`/`loading`/`error`, `refresh()`, and `set()`; commands are POST JSON promises with `.updates(...queries)`; forms spread onto `<form>`, expose `fields` (`as()`, `issues()`, `value()`, `set()`), `pending`, `result`, `validate()`, `enhance(cb)` with `form.submit()`, and `for(id)` for lists — and post/redirect without JavaScript. Successful form submits refresh all page queries. Endpoints live under `/_sveltenet/remote` (customize/authorize via `MapSvelteRemote`).
+
 ## Options
 
 `AddSvelteNet(o => ...)` on the .NET side and `sveltenet({ ... })` in vite.config.ts must agree on the paths (defaults already do):
