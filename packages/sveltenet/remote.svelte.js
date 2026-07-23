@@ -13,6 +13,8 @@ class RemoteQuery {
 	loading = $state(true);
 	error = $state(undefined);
 	current = $state(undefined);
+	// Touched by then(): makes `await getTodos()` re-run after refresh()/set().
+	#version = $state(0);
 	#path;
 	#args;
 	#promise;
@@ -43,6 +45,7 @@ class RemoteQuery {
 
 	refresh() {
 		this.#promise = this.#fetch();
+		this.#version += 1;
 		return this.#promise;
 	}
 
@@ -51,9 +54,11 @@ class RemoteQuery {
 		this.error = undefined;
 		this.loading = false;
 		this.#promise = Promise.resolve(value);
+		this.#version += 1;
 	}
 
 	then(onfulfilled, onrejected) {
+		void this.#version;
 		return this.#promise.then(onfulfilled, onrejected);
 	}
 

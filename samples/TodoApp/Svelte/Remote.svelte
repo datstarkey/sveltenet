@@ -13,13 +13,14 @@
 <main>
 	<h1>Remote functions</h1>
 
-	{#if todos.loading}
-		<p>loading…</p>
-	{:else if todos.error}
-		<p class="error">failed to load</p>
-	{:else}
+	<!-- experimental async: await queries directly; the boundary shows pending state -->
+	<svelte:boundary>
+		{#snippet pending()}
+			<p>loading…</p>
+		{/snippet}
+
 		<ul>
-			{#each todos.current ?? [] as todo (todo.id)}
+			{#each await todos as todo (todo.id)}
 				<li class={{ done: todo.done }}>
 					<!-- command + single-flight-style refresh of both queries -->
 					<button onclick={() => toggleTodo(todo.id).updates(todos, stats)}>
@@ -30,11 +31,9 @@
 				</li>
 			{/each}
 		</ul>
-	{/if}
 
-	{#if stats.current}
-		<p>{stats.current.completed} / {stats.current.total} done</p>
-	{/if}
+		<p>{(await stats).completed} / {(await stats).total} done</p>
+	</svelte:boundary>
 
 	<!-- [Form] remote function: spread onto the form, fields drive inputs and issues -->
 	<form {...createTodo}>

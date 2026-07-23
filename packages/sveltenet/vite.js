@@ -16,8 +16,17 @@ export function sveltenet(options = {}) {
 		pagesPath = 'Svelte',
 		clientOutDir = 'wwwroot/client',
 		serverOutDir = 'svelte-ssr',
-		svelte: svelteOptions,
+		experimentalAsync = false,
+		svelte: svelteOptions = {},
 	} = options;
+
+	if (experimentalAsync) {
+		// Enables Svelte's await expressions, so components can `await getTodos()`.
+		svelteOptions.compilerOptions = {
+			...svelteOptions.compilerOptions,
+			experimental: { ...svelteOptions.compilerOptions?.experimental, async: true },
+		};
+	}
 
 	/** @param {string} entry @param {string} outDir */
 	const buildConfig = (entry, outDir) => ({

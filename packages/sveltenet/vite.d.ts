@@ -8,6 +8,8 @@ export interface SvelteNetOptions {
 	clientOutDir?: string;
 	/** SSR build output. Must match SvelteOptions.ServerOutput. @default 'svelte-ssr' */
 	serverOutDir?: string;
+	/** Enables Svelte's experimental await expressions (`compilerOptions.experimental.async`). @default false */
+	experimentalAsync?: boolean;
 	/** Options forwarded to @sveltejs/vite-plugin-svelte. */
 	svelte?: SvelteOptions;
 }
