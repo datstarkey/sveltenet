@@ -1,0 +1,28 @@
+<!-- Generates SvelteNet TypeScript (types.ts, *.types.ts, remote.ts, routes.d.ts)
+     from the built assembly on every `dotnet build`. Import from the app project:
+
+       <ProjectReference Include="..\SvelteNet.Build\SvelteNet.Build.csproj"
+                         ReferenceOutputAssembly="false" />
+       <Import Project="..\SvelteNet.Build\SvelteNet.Build.targets" />
+
+     Opt out with <SvelteNetTypeGen>false</SvelteNetTypeGen>. When packaged, this
+     file ships in the NuGet's build/ folder and is imported automatically. -->
+<Project>
+
+    <PropertyGroup>
+        <SvelteNetTypeGen Condition="'$(SvelteNetTypeGen)' == ''">true</SvelteNetTypeGen>
+        <SvelteNetPagesPath Condition="'$(SvelteNetPagesPath)' == ''">Svelte</SvelteNetPagesPath>
+        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == ''">$(MSBuildThisFileDirectory)bin\$(Configuration)\net10.0\SvelteNet.Build.dll</SvelteNetBuildTool>
+    </PropertyGroup>
+
+    <!-- Inputs/Outputs make this incremental: the scaffolder rewrites types.ts on
+         each run, so the target is skipped until the app assembly changes again. -->
+    <Target Name="SvelteNetGenerateTypes"
+            AfterTargets="Build"
+            Inputs="$(TargetPath)"
+            Outputs="$(MSBuildProjectDirectory)\$(SvelteNetPagesPath)\types.ts"
+            Condition="'$(SvelteNetTypeGen)' == 'true' AND '$(DesignTimeBuild)' != 'true'">
+        <Exec Command="dotnet exec &quot;$(SvelteNetBuildTool)&quot; &quot;$(TargetPath)&quot; &quot;$(MSBuildProjectDirectory)&quot;" />
+    </Target>
+
+</Project>

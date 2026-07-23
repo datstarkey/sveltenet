@@ -11,7 +11,7 @@
 | `DevServerUrl` | — | `http://localhost:5173` | Vite dev server |
 | `EnableSsr` / `EnableCsr` | — | `true` | Per-component override via `ComponentOptions` |
 | `IsDev` | — | auto | From `IWebHostEnvironment.IsDevelopment()` |
-| `EnableScaffolding` | — | follows `IsDev` | Type generation + scaffolding on startup |
+| `EnableScaffolding` | — | `false` | Startup scaffolding fallback; normally `dotnet build` generates types via `SvelteNet.Build.targets` |
 | `ApplicationAssemblies` | — | calling assembly | Discovery scope for `[SvelteRemote]`, `[SvelteComponent]`, and `SveltePage` types |
 
 ## Discovery scope

@@ -14,7 +14,7 @@ In Development the renderer emits a different script — instead of hashed produ
 ASP.NET serves the page and the props; Vite serves the components with transform-on-demand and pushes hot updates over its websocket. The daily workflow is two terminals:
 
 ```sh
-dotnet watch run     # C# hot reload; scaffolder regenerates .types.ts on restart
+dotnet watch run     # C# hot reload; each rebuild regenerates .types.ts (MSBuild target)
 npm run dev          # Svelte HMR — component edits appear in ~1s, no page reload
 ```
 
@@ -22,5 +22,5 @@ Caveats to know about:
 
 - **SSR is skipped in dev** — the island mounts client-side (`mount`, not `hydrate`). Real SSR output only appears in a production run.
 - **Component `$state` resets on hot update** — vite-plugin-svelte re-instantiates the component. Server-provided `data` is unaffected.
-- **Changing a `[SvelteProp]`** flows into the generated TypeScript when the .NET process restarts (which `dotnet watch` does for you).
+- **Changing a `[SvelteProp]`** flows into the generated TypeScript on the next build (`dotnet watch` rebuilds for you).
 - Vite allows localhost origins by default, so the cross-origin module imports need no CORS config.

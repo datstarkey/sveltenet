@@ -9,7 +9,7 @@ builder.Services.AddSvelteNet();          // options: o => o.PagesPath = "Svelte
 
 var app = builder.Build();
 app.UseStaticFiles();
-app.UseSvelteNet();                       // dev only: generates types + scaffolds files
+app.UseSvelteNet();                       // remote endpoints (+ optional startup scaffolding)
 app.MapRazorPages();
 ```
 
@@ -32,7 +32,7 @@ public class IndexModel : SveltePage
 @Model.Svelte()
 ```
 
-Run the app once in Development and SvelteNet scaffolds the frontend:
+`dotnet build` generates the frontend types (the `SvelteNet.Build.targets` MSBuild target runs the scaffolder against the built assembly — no app run needed, and `dotnet watch` regenerates on every rebuild):
 
 ```
 Svelte/

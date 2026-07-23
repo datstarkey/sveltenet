@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>SvelteNet.Build</RootNamespace>
+        <Title>SvelteNet.Build</Title>
+        <Description>MSBuild-time TypeScript generation for SvelteNet — runs the scaffolder against the built app assembly</Description>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- The tool loads app assemblies that reference the ASP.NET shared framework;
+             deliberately NO SvelteNet project references — SvelteNet is loaded from the
+             app's own output so there is exactly one copy of every SvelteNet type. -->
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+</Project>

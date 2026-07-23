@@ -48,8 +48,9 @@ public class SvelteOptions
 	public bool IsDev { get; set; }
 
 	/// <summary>
-	/// Whether UseSvelteNet generates TypeScript types and scaffolds missing files.
-	/// Defaults to following <see cref="IsDev"/>.
+	/// Whether UseSvelteNet also generates TypeScript types and scaffolds missing files
+	/// at startup. Off by default — generation happens at build time via
+	/// SvelteNet.Build.targets; enable this only when those targets aren't wired up.
 	/// </summary>
 	public bool? EnableScaffolding { get; set; }
 

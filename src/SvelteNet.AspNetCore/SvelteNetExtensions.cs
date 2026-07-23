@@ -67,13 +67,14 @@ public static class SvelteNetExtensions
 	}
 
 	/// <summary>
-	/// In dev mode, generates TypeScript types for all [SvelteProp] models and scaffolds
-	/// missing Svelte components, runtime helpers, and Vite config. No-op in production.
+	/// TypeScript generation normally happens at build time (SvelteNet.Build.targets
+	/// runs the scaffolder after every dotnet build). Set EnableScaffolding = true to
+	/// additionally scaffold at startup, e.g. when the MSBuild targets aren't wired up.
 	/// </summary>
 	public static IApplicationBuilder UseSvelteNet(this IApplicationBuilder app)
 	{
 		var options = app.ApplicationServices.GetRequiredService<SvelteOptions>();
-		if (options.EnableScaffolding ?? options.IsDev) SvelteScaffolder.Run(options);
+		if (options.EnableScaffolding == true) SvelteScaffolder.Run(options);
 		return app;
 	}
 

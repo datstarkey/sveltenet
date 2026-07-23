@@ -12,7 +12,7 @@ Running any sample:
 
 ```sh
 cd samples/<Sample>
-dotnet run          # Development: scaffolds Svelte/ types and serves via the vite dev server
+dotnet run          # Development (via launchSettings); dotnet build generates Svelte/ types
 bun run dev         # in a second terminal: vite + HMR
 
 # production
