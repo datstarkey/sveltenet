@@ -1,0 +1,45 @@
+{
+	"name": "sveltenet",
+	"version": "0.1.0",
+	"description": "Svelte 5 islands for ASP.NET — Vite plugin and runtime helpers",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/datstarkey/sveltenet.git",
+		"directory": "packages/sveltenet"
+	},
+	"type": "module",
+	"scripts": {
+		"test": "node --test"
+	},
+	"exports": {
+		"./vite": {
+			"types": "./vite.d.ts",
+			"default": "./vite.js"
+		},
+		"./client": {
+			"types": "./client.d.ts",
+			"default": "./client.js"
+		},
+		"./server": {
+			"types": "./server.d.ts",
+			"default": "./server.js"
+		}
+	},
+	"files": [
+		"*.js",
+		"*.d.ts"
+	],
+	"peerDependencies": {
+		"svelte": "^5.46.0",
+		"vite": "^8.0.0"
+	},
+	"dependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.0.0"
+	},
+	"devDependencies": {
+		"happy-dom": "^20.0.0",
+		"svelte": "^5.46.0",
+		"vite": "^8.0.0"
+	}
+}

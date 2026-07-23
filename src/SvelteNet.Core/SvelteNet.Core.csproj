@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>SvelteNet</RootNamespace>
+        <Title>SvelteNet.Core</Title>
+        <Description>Core rendering engine for SvelteNet — Svelte 5 islands for ASP.NET</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Jint" Version="4.14.0" />
+    </ItemGroup>
+
+</Project>

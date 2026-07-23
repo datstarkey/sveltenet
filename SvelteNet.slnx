@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/TodoApp/TodoApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SvelteNet.AspNetCore/SvelteNet.AspNetCore.csproj" />
+    <Project Path="src/SvelteNet.Core/SvelteNet.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SvelteNet.AspNetCore.Tests/SvelteNet.AspNetCore.Tests.csproj" />
+    <Project Path="tests/SvelteNet.Core.Tests/SvelteNet.Core.Tests.csproj" />
+  </Folder>
+</Solution>

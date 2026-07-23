@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>SvelteNet.AspNetCore</RootNamespace>
+        <Title>SvelteNet.AspNetCore</Title>
+        <Description>Svelte 5 islands for ASP.NET Razor Pages and MVC, with typed props</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="SvelteNet.AspNetCore.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\SvelteNet.Core\SvelteNet.Core.csproj" />
+    </ItemGroup>
+
+</Project>

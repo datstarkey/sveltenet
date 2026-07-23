@@ -1,6 +1,5 @@
 bin/
 obj/
-/packages/
 riderModule.iml
 /_ReSharper.Caches/
 #Ignore thumbnails created by Windows
@@ -32,6 +31,5 @@ obj/
 _ReSharper*/
 [Tt]est[Rr]esult*
 .vs/
-#Nuget packages folder
-packages/
 /publish/
+node_modules/

@@ -1,0 +1,188 @@
+namespace SvelteNet.TypeGen;
+
+using System.Reflection;
+
+public static class TypeScriptExtensions
+{
+	public static string GetTypescriptInterface(this Type type, bool useGenericTypes = true)
+	{
+		var exportType = type.StripNullable() ?? type;
+
+		if (exportType.IsEnum)
+		{
+			// Names are camelCased to match JsonStringEnumConverter(JsonNamingPolicy.CamelCase).
+			var members = Enum.GetNames(exportType).Select(s => $"'{s.ToCamelCase()}'");
+			return $"export type {exportType.TsType()} = {string.Join(" | ", members)};";
+		}
+
+		exportType = useGenericTypes || !exportType.IsGenericType ? exportType : exportType.GetGenericTypeDefinition();
+
+		var nullability = new NullabilityInfoContext();
+		var props = exportType
+			.GetProperties(BindingFlags.FlattenHierarchy | BindingFlags.Public | BindingFlags.Instance)
+			.Where(p => p.CanRead)
+			.Select(p =>
+			{
+				var nullable = nullability.Create(p).ReadState == NullabilityState.Nullable;
+				return $"{p.Name.ToCamelCase()}: {p.PropertyType.TsType()}{(nullable ? " | null" : "")};";
+			});
+
+		var body = string.Join(Environment.NewLine + "\t", props);
+
+		return $$"""
+export interface {{exportType.TsType()}} {
+	{{body}}
+}
+""";
+	}
+
+	internal static Type? StripNullable(this Type? type)
+	{
+		if (type is null) return null;
+		return Nullable.GetUnderlyingType(type) ?? type;
+	}
+
+	public static string TsType(this Type? type)
+	{
+		var stripped = StripNullable(type);
+
+		// fallback to any for unknown types
+		if (stripped == null)
+			return "any";
+
+		if (stripped.TsSimpleName(out var result))
+			return result;
+
+		if (stripped.IsCollectionType(out result))
+			return result;
+
+		if (stripped.IsDictionaryType(out result))
+			return result;
+
+		if (stripped.IsCustomGenericType(out result))
+			return result;
+
+		// fallback for other system types
+		if (stripped.IsSystemType())
+			return "any";
+
+		return stripped.Name.RemoveTypeArity();
+	}
+
+	static string GetTsDictionaryTypeName(this Type type)
+	{
+		var dictionary2Interface = type.GetInterface("System.Collections.Generic.IDictionary`2");
+		if (dictionary2Interface != null || (type.FullName != null && type.FullName.StartsWith("System.Collections.Generic.IDictionary`2")))
+		{
+			var dictionaryType = dictionary2Interface ?? type;
+			var keyType = dictionaryType.GetGenericArguments()[0];
+			var valueType = dictionaryType.GetGenericArguments()[1];
+
+			var keyTypeName = keyType.TsType();
+			var valueTypeName = valueType.TsType();
+
+			if (keyTypeName is not "number" and not "string")
+			{
+				throw new InvalidOperationException(
+					$"Error when determining TypeScript type for C# type '{type.FullName}': " +
+					"TypeScript dictionary key type must be either 'number' or 'string'");
+			}
+
+			return $"{{ [key: {keyTypeName}]: {valueTypeName}; }}";
+		}
+
+		// non-generic IDictionary
+		if (type.GetInterface("System.Collections.IDictionary") != null ||
+		    (type.FullName != null && type.FullName.StartsWith("System.Collections.IDictionary")))
+		{
+			return "{ [key: string]: string; }";
+		}
+
+		return "any";
+	}
+
+	static Type? GetTsCollectionElementType(this Type type) => type.GetCollectionType();
+
+	static bool IsCustomGenericType(this Type type, out string name, bool useGenericTypes = true)
+	{
+		name = "any";
+		var value = type.GetTypeInfo().IsGenericType && !type.IsDictionaryType(out name) && !type.IsCollectionType(out name);
+		if (!value) return value;
+
+		// generally closed types, but can return T,U if useGenericTypes is false
+		var genericArgs = useGenericTypes
+			? type.GetGenericArguments()
+			: type.GetGenericTypeDefinition().GetGenericArguments();
+
+		var argumentNames = genericArgs
+			.Select(t => t.IsGenericParameter ? t.Name : t.TsType())
+			.ToArray();
+
+		name = $"{type.Name.RemoveTypeArity()}<{string.Join(", ", argumentNames)}>";
+		return value;
+	}
+
+	static bool IsCollectionType(this Type type, out string name)
+	{
+		var value = type.IsCollectionType();
+		name = value ? (GetTsCollectionElementType(type)?.TsType() ?? "any") + "[]" : "any";
+		return value;
+	}
+
+	static bool IsDictionaryType(this Type type, out string name)
+	{
+		var value = type.IsDictionaryType();
+		name = !value ? "any" : type.GetTsDictionaryTypeName();
+		return value;
+	}
+
+	public static bool IsSimpleType(this Type type)
+	{
+		return type.TsSimpleName(out _);
+	}
+
+	static bool TsSimpleName(this Type type, out string name)
+	{
+		name = "any";
+		if (string.IsNullOrWhiteSpace(type.FullName))
+		{
+			return false;
+		}
+
+		switch (type.FullName)
+		{
+			case "System.Object":
+				name = "unknown";
+				return true;
+			case "System.Boolean":
+				name = "boolean";
+				return true;
+			case "System.Char":
+			case "System.String":
+			case "System.Guid":
+			// Dates serialize to ISO 8601 strings — JSON.parse does not revive Date objects.
+			case "System.DateTime":
+			case "System.DateTimeOffset":
+			case "System.DateOnly":
+			case "System.TimeOnly":
+			case "System.TimeSpan":
+				name = "string";
+				return true;
+			case "System.SByte":
+			case "System.Byte":
+			case "System.Int16":
+			case "System.UInt16":
+			case "System.Int32":
+			case "System.UInt32":
+			case "System.Int64":
+			case "System.UInt64":
+			case "System.Single":
+			case "System.Double":
+			case "System.Decimal":
+				name = "number";
+				return true;
+			default:
+				return false;
+		}
+	}
+}

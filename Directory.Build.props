@@ -1,0 +1,12 @@
+<Project>
+
+    <PropertyGroup>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Authors>Jake Starkey</Authors>
+        <PackageProjectUrl>https://github.com/datstarkey/sveltenet</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/datstarkey/sveltenet</RepositoryUrl>
+    </PropertyGroup>
+
+</Project>
