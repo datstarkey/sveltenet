@@ -77,4 +77,6 @@ sveltenet({ experimentalAsync: true })
 
 The server then awaits the queries (through the bridge) and renders the real HTML, and query results are stashed via Svelte's `hydratable` into the page head (`window.__svelte.h`) — hydration adopts them with **zero network requests**. `refresh()` always performs a real fetch.
 
-Known issue: after a hydratable-adopted hydration, `refresh()`/`.updates()` responses update query state but the awaited template may not re-render (works in the non-hydrated CSR path) — under investigation.
+On the client, query instances are cached (`getTodos() === getTodos()` per argument set). On the server they are deliberately **not** — SSR engines are pooled and keep the module graph alive across requests, so a cached instance would serve the first render's data forever and skip the hydration stash. `hydratable` still dedupes fetches within a single render by key.
+
+Queries are reactive thenables: `then`/`catch`/`finally` are property getters that read internal state, because `await` only touches Svelte's dependency tracking during the synchronous `.then` property access. That's what makes `{#each await getTodos() ...}` re-render after `refresh()`/`.updates()`/`set()` — including after a hydratable-adopted hydration.

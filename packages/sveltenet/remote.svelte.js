@@ -38,7 +38,8 @@ class RemoteQuery {
 	loading = $state(true);
 	error = $state(undefined);
 	current = $state(undefined);
-	// Touched by then(): makes `await getTodos()` re-run after refresh()/set().
+	// Read by the then/catch/finally getters: makes `await getTodos()` re-run
+	// after refresh()/set().
 	#version = $state(0);
 	#path;
 	#args;
@@ -92,17 +93,27 @@ class RemoteQuery {
 		this.#version += 1;
 	}
 
-	then(onfulfilled, onrejected) {
+	// then/catch/finally are getters, not methods: `await query` and
+	// `Promise.resolve(query)` read the `.then` PROPERTY synchronously — the only
+	// moment Svelte's dependency tracking is active — but invoke the function
+	// later in a microtask, outside any tracked context. Reading #version in the
+	// getter is what subscribes await expressions to refresh()/set(); a plain
+	// then() method is never tracked and the template goes inert after hydration.
+	get then() {
 		void this.#version;
-		return this.#promise.then(onfulfilled, onrejected);
+		const promise = this.#promise;
+		return (onfulfilled, onrejected) => promise.then(onfulfilled, onrejected);
 	}
 
-	catch(onrejected) {
-		return this.#promise.then(undefined, onrejected);
+	get catch() {
+		const then = this.then;
+		return (onrejected) => then(undefined, onrejected);
 	}
 
-	finally(onfinally) {
-		return this.#promise.finally(onfinally);
+	get finally() {
+		void this.#version;
+		const promise = this.#promise;
+		return (onfinally) => promise.finally(onfinally);
 	}
 }
 
@@ -111,6 +122,12 @@ export function query(path, mapArgs) {
 	const cache = new Map();
 	return (...args) => {
 		const argsObject = mapArgs ? mapArgs(...args) : undefined;
+		// The server module graph is long-lived (pooled SSR engines render many
+		// requests), so a module-level cache would leak state across renders:
+		// hydratable() only registers during construction (no stash after the
+		// first render) and #promise would keep serving the first render's data.
+		// Per-render dedup is hydratable's job — same key, same stashed promise.
+		if (isServer) return new RemoteQuery(path, argsObject);
 		const key = JSON.stringify(argsObject ?? null);
 		let instance = cache.get(key);
 		if (!instance) {
