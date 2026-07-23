@@ -20,6 +20,13 @@ namespace SvelteNet.AspNetCore.Tests.Fixtures
 		public List<T> Items { get; set; } = [];
 		public int Total { get; set; }
 	}
+
+	[SvelteComponent]
+	public class CardViewModel
+	{
+		public required string Heading { get; set; }
+		public List<Widget> Widgets { get; set; } = [];
+	}
 }
 
 namespace SvelteNet.AspNetCore.Tests.Fixtures.Pages

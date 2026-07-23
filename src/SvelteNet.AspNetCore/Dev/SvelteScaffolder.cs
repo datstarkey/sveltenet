@@ -11,15 +11,17 @@ using System.Reflection;
 /// </summary>
 public static class SvelteScaffolder
 {
-	public static void Run(SvelteOptions options, IReadOnlyList<Type>? pageTypes = null)
+	public static void Run(SvelteOptions options, IReadOnlyList<Type>? pageTypes = null, IReadOnlyList<Type>? componentModelTypes = null)
 	{
 		var svelteDir = Path.Combine(options.ContentRoot, options.PagesPath);
 		Directory.CreateDirectory(svelteDir);
 
-		var pages = pageTypes?.ToList() ?? FindSveltePages();
+		var pages = pageTypes?.ToList() ?? FindTypes(t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract);
+		var componentModels = componentModelTypes?.ToList() ?? FindTypes(t => t.IsDefined(typeof(SvelteComponentAttribute), false));
 
-		WriteSharedTypes(svelteDir, pages);
+		WriteSharedTypes(svelteDir, pages, componentModels);
 		foreach (var page in pages) ScaffoldPage(svelteDir, page);
+		foreach (var model in componentModels) ScaffoldComponentModel(svelteDir, model);
 
 		WriteIfMissing(Path.Combine(svelteDir, "mount.ts"), SvelteTemplates.MountTs);
 		WriteIfMissing(Path.Combine(svelteDir, "render.ts"), SvelteTemplates.RenderTs);
@@ -28,12 +30,12 @@ public static class SvelteScaffolder
 		WriteRouteIds(options, svelteDir);
 	}
 
-	private static List<Type> FindSveltePages()
+	private static List<Type> FindTypes(Func<Type, bool> predicate)
 	{
 		return AppDomain.CurrentDomain.GetAssemblies()
 			.Where(a => !a.IsDynamic)
 			.SelectMany(GetLoadableTypes)
-			.Where(t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract)
+			.Where(predicate)
 			.ToList();
 	}
 
@@ -54,10 +56,11 @@ public static class SvelteScaffolder
 		.Where(p => p.IsDefined(typeof(SveltePropAttribute), true))
 		.ToArray();
 
-	private static void WriteSharedTypes(string svelteDir, List<Type> pages)
+	private static void WriteSharedTypes(string svelteDir, List<Type> pages, List<Type> componentModels)
 	{
 		var rootTypes = pages.SelectMany(SvelteProps)
 			.Select(p => p.PropertyType)
+			.Concat(componentModels)
 			.Distinct()
 			.ToList();
 
@@ -105,6 +108,22 @@ export interface {{name}}Data {
 """);
 
 		WriteIfMissing(Path.Combine(dir, $"{name}.svelte"), SvelteTemplates.Page(name));
+	}
+
+	/// <summary>
+	/// Scaffolds the component for a [SvelteComponent] model. Its data interface is
+	/// the model type itself, which WriteSharedTypes already emitted into types.ts.
+	/// </summary>
+	private static void ScaffoldComponentModel(string svelteDir, Type model)
+	{
+		var component = SvelteComponentResolver.Resolve(model);
+		var path = Path.Combine(svelteDir, component + ".svelte");
+		Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+		var depth = component.Count(c => c == '/');
+		var typesImport = depth == 0 ? "./types" : string.Concat(Enumerable.Repeat("../", depth)) + "types";
+
+		WriteIfMissing(path, SvelteTemplates.ComponentModelPage(model.TsType(), typesImport));
 	}
 
 	/// <summary>Collects the named types a page's data interface must import from the shared types file.</summary>

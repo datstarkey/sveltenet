@@ -1,11 +1,7 @@
 <script lang="ts">
-	// MVC components define their own data shape — type generation covers SveltePage models only.
-	interface HelloData {
-		name: string;
-		visits: number;
-	}
+	import type { HelloViewModel } from '../types';
 
-	let { data }: { data: HelloData } = $props();
+	let { data }: { data: HelloViewModel } = $props();
 
 	let cheers = $state(0);
 </script>

@@ -23,6 +23,14 @@ export { renderComponent } from 'sveltenet/server';
 </script>
 """;
 
+	public static string ComponentModelPage(string typeName, string typesImport) => $$"""
+<script lang="ts">
+	import type { {{typeName}} } from '{{typesImport}}';
+
+	let { data }: { data: {{typeName}} } = $props();
+</script>
+""";
+
 	public static string ViteConfig(SvelteOptions options)
 	{
 		var plugin = "sveltenet()";

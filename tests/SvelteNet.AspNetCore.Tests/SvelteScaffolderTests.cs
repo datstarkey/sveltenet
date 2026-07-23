@@ -1,6 +1,7 @@
 namespace SvelteNet.AspNetCore.Tests;
 
 using SvelteNet.AspNetCore.Dev;
+using SvelteNet.AspNetCore.Tests.Fixtures;
 using SvelteNet.AspNetCore.Tests.Fixtures.Pages;
 using SvelteNet.AspNetCore.Tests.Fixtures.Pages.Admin;
 
@@ -16,7 +17,7 @@ public class SvelteScaffolderTests : IDisposable
 
 	public void Dispose() => Directory.Delete(_root, recursive: true);
 
-	private void Run() => SvelteScaffolder.Run(_options, [typeof(HomeModel), typeof(UsersModel)]);
+	private void Run() => SvelteScaffolder.Run(_options, [typeof(HomeModel), typeof(UsersModel)], [typeof(CardViewModel)]);
 
 	private string ReadSvelteFile(params string[] segments) =>
 		File.ReadAllText(Path.Combine([_root, "Svelte", .. segments]));
@@ -113,6 +114,18 @@ public class SvelteScaffolderTests : IDisposable
 		var viteConfig = File.ReadAllText(Path.Combine(_root, "vite.config.ts"));
 		Assert.Contains("pagesPath: 'Islands'", viteConfig);
 		Assert.Contains("serverOutDir: 'svelte-ssr'", viteConfig);
+	}
+
+	[Fact]
+	public void Component_models_get_types_and_a_scaffolded_component()
+	{
+		Run();
+
+		Assert.Contains("export interface CardViewModel", ReadSvelteFile("types.ts"));
+
+		var component = ReadSvelteFile("Components", "Card.svelte");
+		Assert.Contains("import type { CardViewModel } from '../types';", component);
+		Assert.Contains("let { data }: { data: CardViewModel } = $props();", component);
 	}
 
 	[Fact]

@@ -156,6 +156,18 @@ public class EnhanceIntegrationTests : IClassFixture<EnhanceIntegrationTests.Tod
 	}
 
 	[Fact]
+	public async Task Attributed_view_models_render_via_the_typed_helper()
+	{
+		var response = await CreateClient().GetAsync("/Hello");
+
+		response.EnsureSuccessStatusCode();
+		var html = await response.Content.ReadAsStringAsync();
+		Assert.Contains("<div id=\"svelte-components-hello\">", html);
+		Assert.Contains("Svelte/Components/Hello.svelte", html);
+		Assert.Contains("\"visits\":", html);
+	}
+
+	[Fact]
 	public async Task Post_without_antiforgery_token_is_rejected()
 	{
 		var client = CreateClient();

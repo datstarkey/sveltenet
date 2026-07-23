@@ -156,12 +156,31 @@ Enhanced forms degrade gracefully: no JS (or an `onError` you handle) means the 
 
 ### MVC / arbitrary views
 
-```cshtml
-@Html.Svelte("Components/Cart", Model.Cart)
-@Html.SvelteHead("Components/Cart")
+Put `[SvelteComponent]` on the view model and the component is resolved from the type — no strings in views, the model's TypeScript interface lands in `types.ts`, and the component file is scaffolded on the next dev run:
+
+```csharp
+[SvelteComponent]                       // → "Components/Cart" (type name minus ViewModel/Model/Dto)
+public record CartViewModel(List<Item> Items);
+
+[SvelteComponent("Widgets/Special")]    // or name the path explicitly
+public record SpecialViewModel(...);
 ```
 
-The model is passed as the component's `data` prop. Types are generated for `SveltePage` models; for MVC components you write the interface yourself (or reuse `types.ts`).
+```cshtml
+@model CartViewModel
+@section Head { @Html.SvelteHead(Model) }
+@Html.Svelte(Model)
+```
+
+```svelte
+<script lang="ts">
+    import type { CartViewModel } from '../types';
+
+    let { data }: { data: CartViewModel } = $props();
+</script>
+```
+
+The string-based form also works for one-offs — `@Html.Svelte("Components/Cart", Model.Cart)` — where the model is passed as the component's `data` prop and you write the interface yourself.
 
 Renders are cached per request so a `Svelte`/`SvelteHead` pair renders once. To render the same component multiple times on a page, give each instance a distinct `elementId` (it keys the cache and the container div id) — without one, the second render throws rather than silently reusing the first instance's output:
 
@@ -209,4 +228,4 @@ dotnet run                        # then visit /, /Admin/Stats, /Hello
 
 ## Status
 
-Prototype — not yet published to NuGet or npm. Known gaps: the scaffolder's page-directory mapping assumes the `*.Pages.*` namespace convention, and MVC view models aren't included in type generation.
+Prototype — not yet published to NuGet or npm. Known gaps: the scaffolder's page-directory mapping assumes the `*.Pages.*` namespace convention.
