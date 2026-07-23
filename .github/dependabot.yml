@@ -22,6 +22,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The source generator targets the OLDEST supported compiler on purpose:
+      # analyzers built against a newer Roslyn than the SDK ships are refused
+      # with CS9057 and silently stop running (see PR #4).
+      - dependency-name: 'Microsoft.CodeAnalysis*'
     groups:
       nuget-minor-and-patch:
         applies-to: version-updates
