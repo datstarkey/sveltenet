@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
+	// Served from https://datstarkey.github.io/sveltenet/
+	base: '/sveltenet/',
 	title: 'SvelteNet',
 	description: 'Svelte 5 islands for ASP.NET — typed props, SvelteKit-style forms and remote functions, Jint-based SSR.',
 	lang: 'en-US',
