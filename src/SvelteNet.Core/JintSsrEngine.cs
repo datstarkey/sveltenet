@@ -14,11 +14,13 @@ using System.Collections.Concurrent;
 public class JintSsrEngine : ISvelteSsrEngine
 {
 	private readonly SvelteOptions _options;
+	private readonly ISvelteSsrFetchHandler? _fetchHandler;
 	private readonly ConcurrentBag<Engine> _pool = new();
 
-	public JintSsrEngine(SvelteOptions options)
+	public JintSsrEngine(SvelteOptions options, ISvelteSsrFetchHandler? fetchHandler = null)
 	{
 		_options = options;
+		_fetchHandler = fetchHandler;
 	}
 
 	public SsrResult Render(string componentModule, string renderModule, string? propsJson)
@@ -32,7 +34,8 @@ public class JintSsrEngine : ISvelteSsrEngine
 		var renderFn = engine.Modules.Import("./" + renderModule).Get("renderComponent");
 		var props = propsJson is null ? JsValue.Undefined : new JsonParser(engine).Parse(propsJson);
 
-		var result = engine.Invoke(renderFn, component, props).AsObject();
+		// renderComponent is async — await-expression trees resolve through the fetch bridge.
+		var result = engine.Invoke(renderFn, component, props).UnwrapIfPromise().AsObject();
 		var head = result.Get("head");
 		var body = result.Get("body");
 
@@ -47,8 +50,29 @@ public class JintSsrEngine : ISvelteSsrEngine
 	private Engine CreateEngine()
 	{
 		var serverDir = Path.Combine(_options.ContentRoot, _options.ServerOutput);
-		var engine = new Engine(o => o.EnableModules(serverDir));
+		var engine = new Engine(o => o.EnableModules(new SsrModuleLoader(serverDir)));
 		engine.SetValue("console", new ConsoleWrapper());
+
+		if (_fetchHandler is not null)
+		{
+			var handler = _fetchHandler;
+			engine.SetValue("__sveltenetFetch", (string url, string method) =>
+			{
+				var (status, body) = handler.Handle(url, method);
+				return JsValue.FromObject(engine, new { status, body });
+			});
+			engine.Execute("""
+				globalThis.fetch = (url, init) => {
+					const result = __sveltenetFetch(String(url), (init && init.method) || 'GET');
+					return Promise.resolve({
+						ok: result.status >= 200 && result.status < 300,
+						status: result.status,
+						json: () => Promise.resolve(result.body == null ? undefined : JSON.parse(result.body)),
+					});
+				};
+				""");
+		}
+
 		return engine;
 	}
 }

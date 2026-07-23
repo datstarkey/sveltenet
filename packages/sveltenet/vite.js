@@ -44,6 +44,14 @@ export function sveltenet(options = {}) {
 	/** @type {import('vite').Plugin} */
 	const configPlugin = {
 		name: 'sveltenet',
+		// 'pre' so we beat the built-in resolver's external handling of node: builtins.
+		enforce: 'pre',
+		// The .NET SSR engine has no Node builtins; Svelte's async SSR imports this one.
+		resolveId(id, importer) {
+			if (id === 'node:async_hooks' && this.environment?.name === 'ssr')
+				return this.resolve('sveltenet/async-hooks', importer);
+			return null;
+		},
 		config() {
 			return {
 				environments: {

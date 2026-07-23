@@ -6,4 +6,4 @@ export interface RenderResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export declare function renderComponent(component: Component<any>, props?: Record<string, unknown>): RenderResult;
+export declare function renderComponent(component: Component<any>, props?: Record<string, unknown>): Promise<RenderResult>;

@@ -26,6 +26,8 @@ public static class SvelteNetExtensions
 			configure?.Invoke(options);
 			return options;
 		});
+		services.AddHttpContextAccessor();
+		services.AddSingleton<ISvelteSsrFetchHandler, RemoteSsrFetchHandler>();
 		services.AddSingleton<ISvelteSsrEngine, JintSsrEngine>();
 		services.AddSingleton<SvelteRenderer>();
 

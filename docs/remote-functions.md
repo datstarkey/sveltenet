@@ -62,4 +62,6 @@ sveltenet({ experimentalAsync: true })
 </svelte:boundary>
 ```
 
-`refresh()` (and `command(...).updates(...)`) re-runs the awaits automatically. Caveat: the SSR engine has no `fetch`, so await-expression components must disable SSR — override `SvelteComponentOptions()` on the page model and set `options.Ssr = false` (see `samples/TodoApp/Pages/Remote.cshtml.cs`). An in-process fetch bridge to run queries during SSR is planned.
+`refresh()` (and `command(...).updates(...)`) re-runs the awaits automatically.
+
+**SSR**: an in-process fetch bridge (`ISvelteSsrFetchHandler`, implemented by `RemoteSsrFetchHandler`) routes `fetch` calls made inside the SSR engine straight to the [Query] descriptors — no HTTP round-trip — and the engine serves a `node:async_hooks` shim so Svelte's async server runtime loads. Await-style pages SSR without crashing; currently boundaries render their `pending` snippet server-side and resolve on the client (fully-awaited SSR HTML is a known follow-up).

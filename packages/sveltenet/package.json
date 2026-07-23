@@ -21,6 +21,9 @@
 			"types": "./client.d.ts",
 			"default": "./client.js"
 		},
+		"./async-hooks": {
+			"default": "./async-hooks.js"
+		},
 		"./remote": {
 			"types": "./remote.svelte.d.ts",
 			"svelte": "./remote.svelte.js",
