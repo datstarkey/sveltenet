@@ -8,11 +8,26 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Remote;
+using SvelteNet.Remote;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 public static class SvelteNetExtensions
 {
-	public static IServiceCollection AddSvelteNet(this IServiceCollection services, Action<SvelteOptions>? configure = null)
+	/// <summary>
+	/// Registers SvelteNet. [SvelteRemote] services are discovered from the calling
+	/// assembly; pass <paramref name="applicationAssemblies"/> when they live elsewhere.
+	/// </summary>
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static IServiceCollection AddSvelteNet(this IServiceCollection services, Action<SvelteOptions>? configure = null, params Assembly[] applicationAssemblies)
 	{
+		// The calling assembly is the app itself — the default discovery scope.
+		// Scoping matters when several SvelteNet apps share a process
+		// (WebApplicationFactory test hosts).
+		var assemblies = applicationAssemblies is { Length: > 0 }
+			? applicationAssemblies
+			: [Assembly.GetCallingAssembly()];
+
 		services.AddSingleton(sp =>
 		{
 			var env = sp.GetRequiredService<IWebHostEnvironment>();
@@ -24,6 +39,7 @@ public static class SvelteNetExtensions
 				options.IsDev = true;
 
 			configure?.Invoke(options);
+			options.ApplicationAssemblies ??= assemblies;
 			return options;
 		});
 		services.AddHttpContextAccessor();
@@ -31,10 +47,21 @@ public static class SvelteNetExtensions
 		services.AddSingleton<ISvelteSsrEngine, JintSsrEngine>();
 		services.AddSingleton<SvelteRenderer>();
 
-		// [SvelteRemote] services: registered scoped, dispatched by MapSvelteRemote.
-		var remoteServices = TypeDiscovery.FindTypes(t => t.IsDefined(typeof(SvelteRemoteAttribute), false));
-		foreach (var service in remoteServices) services.AddScoped(service);
-		services.AddSingleton(new SvelteRemoteRegistry(remoteServices));
+		// [SvelteRemote] services, registered scoped and dispatched by MapSvelteRemote.
+		// The source generator's [ModuleInitializer]s have already registered compiled
+		// descriptors by the time the app's Program runs — no reflection scan. The scan
+		// only runs as a fallback for apps built without SvelteNet.Generators.
+		var descriptors = SvelteRemoteDescriptors.All
+			.Where(d => assemblies.Contains(d.ServiceType.Assembly))
+			.ToList();
+		if (descriptors.Count == 0)
+			descriptors = TypeDiscovery
+				.FindTypes(assemblies, t => t.IsDefined(typeof(SvelteRemoteAttribute), false))
+				.Select(SvelteRemoteDescriptors.For)
+				.ToList();
+
+		foreach (var descriptor in descriptors) services.AddScoped(descriptor.ServiceType);
+		services.AddSingleton(new SvelteRemoteRegistry(descriptors));
 
 		return services;
 	}

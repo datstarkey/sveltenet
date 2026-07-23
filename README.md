@@ -52,9 +52,11 @@ src/       SvelteNet.Core          — renderer, Jint SSR engine, TypeScript gen
            SvelteNet.AspNetCore    — SveltePage, @Html.Svelte, remote endpoints, scaffolder (NuGet)
            SvelteNet.Generators    — Roslyn source generator for remote dispatch
 packages/  sveltenet               — Vite plugin + client/remote runtimes (npm)
-samples/   TodoApp                 — Razor Pages + MVC sample (forms, remote functions, async)
+samples/   TodoApp                 — Razor Pages: typed props, forms, enhance()
+           RemoteFunctions         — query/command/form remote functions, async SSR
+           MvcHello                — MVC controllers with [SvelteComponent]
 tests/     SvelteNet.Core.Tests, SvelteNet.AspNetCore.Tests
-docs/      the documentation above
+docs/      the documentation above (also a VitePress site: bun run docs:dev)
 ```
 
 ## Development
@@ -63,11 +65,12 @@ The repo uses bun (bun.lock is committed), but every script calls tools directly
 
 ```sh
 dotnet test SvelteNet.slnx              # .NET unit + integration tests
-bun install                             # workspace install (packages/ + samples/)
+bun install                             # workspace install (packages/ + samples/ + docs/)
 cd packages/sveltenet && bun run test   # JS tests
-cd samples/TodoApp && bun run build && dotnet run    # then visit /, /Admin/Stats, /Remote, /Hello
+cd samples/TodoApp && dotnet run        # any sample: see samples/README.md
+bun run docs:dev                        # documentation site
 ```
 
 ## Status
 
-Prototype — not yet published to NuGet or npm. Known gaps: the scaffolder's page-directory mapping assumes the `*.Pages.*` namespace convention; await-expression components must disable SSR (no fetch inside the SSR engine — an in-process fetch bridge is planned); Blazor/Blazor-SSR hosting is on the roadmap.
+Prototype — not yet published to NuGet or npm. Known gaps: the scaffolder's page-directory mapping assumes the `*.Pages.*` namespace convention; Blazor/Blazor-SSR hosting is on the roadmap.

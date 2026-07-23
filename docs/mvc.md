@@ -32,3 +32,5 @@ Renders are cached per request so a `Svelte`/`SvelteHead` pair renders once. To 
 @Html.Svelte("Components/Card", Model.ProductA, elementId: "card-a")
 @Html.Svelte("Components/Card", Model.ProductB, elementId: "card-b")
 ```
+
+A runnable version of this setup lives in `samples/MvcHello`.

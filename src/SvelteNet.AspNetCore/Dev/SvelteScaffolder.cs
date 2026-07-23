@@ -16,9 +16,12 @@ public static class SvelteScaffolder
 		var svelteDir = Path.Combine(options.ContentRoot, options.PagesPath);
 		Directory.CreateDirectory(svelteDir);
 
-		var pages = pageTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract);
-		var componentModels = componentModelTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsDefined(typeof(SvelteComponentAttribute), false));
-		var remoteServices = remoteServiceTypes?.ToList() ?? TypeDiscovery.FindTypes(t => t.IsDefined(typeof(SvelteRemoteAttribute), false));
+		// Dev-time reflection only — scoped to the app's assemblies so co-hosted
+		// SvelteNet apps (e.g. test hosts) never scaffold each other's types.
+		var scope = options.ApplicationAssemblies;
+		var pages = pageTypes?.ToList() ?? TypeDiscovery.FindTypes(scope, t => t.IsSubclassOf(typeof(SveltePage)) && !t.IsAbstract);
+		var componentModels = componentModelTypes?.ToList() ?? TypeDiscovery.FindTypes(scope, t => t.IsDefined(typeof(SvelteComponentAttribute), false));
+		var remoteServices = remoteServiceTypes?.ToList() ?? TypeDiscovery.FindTypes(scope, t => t.IsDefined(typeof(SvelteRemoteAttribute), false));
 
 		WriteSharedTypes(svelteDir, pages, componentModels, remoteServices);
 		foreach (var page in pages) ScaffoldPage(svelteDir, page);

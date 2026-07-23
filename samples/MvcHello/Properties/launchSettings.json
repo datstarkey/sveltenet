@@ -1,0 +1,11 @@
+{
+	"profiles": {
+		"MvcHello": {
+			"commandName": "Project",
+			"applicationUrl": "http://localhost:5230",
+			"environmentVariables": {
+				"ASPNETCORE_ENVIRONMENT": "Development"
+			}
+		}
+	}
+}

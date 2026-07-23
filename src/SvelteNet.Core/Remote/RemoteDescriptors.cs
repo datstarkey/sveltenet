@@ -31,6 +31,9 @@ public static class SvelteRemoteDescriptors
 
 	public static void Register(RemoteServiceDescriptor descriptor) => Registered[descriptor.ServiceType] = descriptor;
 
+	/// <summary>Every descriptor registered so far (module initializers run at assembly load).</summary>
+	public static IReadOnlyCollection<RemoteServiceDescriptor> All => Registered.Values.ToArray();
+
 	public static RemoteServiceDescriptor For(Type serviceType) =>
 		Registered.TryGetValue(serviceType, out var descriptor) ? descriptor : FromReflection(serviceType);
 

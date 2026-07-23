@@ -10,11 +10,14 @@ public sealed class SvelteRemoteRegistry
 {
 	private readonly Dictionary<string, RemoteServiceDescriptor> _services;
 
-	public SvelteRemoteRegistry(IEnumerable<Type> serviceTypes)
+	public SvelteRemoteRegistry(IEnumerable<RemoteServiceDescriptor> descriptors)
 	{
-		_services = serviceTypes
-			.Select(SvelteRemoteDescriptors.For)
-			.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
+		_services = descriptors.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
+	}
+
+	public SvelteRemoteRegistry(IEnumerable<Type> serviceTypes)
+		: this(serviceTypes.Select(SvelteRemoteDescriptors.For))
+	{
 	}
 
 	public IReadOnlyCollection<RemoteServiceDescriptor> Services => _services.Values;

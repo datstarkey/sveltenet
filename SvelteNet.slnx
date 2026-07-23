@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
+    <Project Path="samples/MvcHello/MvcHello.csproj" />
+    <Project Path="samples/RemoteFunctions/RemoteFunctions.csproj" />
     <Project Path="samples/TodoApp/TodoApp.csproj" />
   </Folder>
   <Folder Name="/src/">

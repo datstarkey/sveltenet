@@ -7,14 +7,14 @@ using System.Text;
 using System.Text.Json;
 
 /// <summary>
-/// Integration tests of the query/command/form remote protocol against the TodoApp
+/// Integration tests of the query/command/form remote protocol against the RemoteFunctions
 /// sample's [SvelteRemote] TodoApi, dispatched through the source-generated descriptors.
 /// </summary>
-public class RemoteFunctionTests : IClassFixture<TodoAppFactory>
+public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 {
-	private readonly TodoAppFactory _factory;
+	private readonly RemoteFunctionsFactory _factory;
 
-	public RemoteFunctionTests(TodoAppFactory factory)
+	public RemoteFunctionTests(RemoteFunctionsFactory factory)
 	{
 		_factory = factory;
 	}

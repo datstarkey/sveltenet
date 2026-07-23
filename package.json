@@ -2,6 +2,12 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "samples/*"
-  ]
+    "samples/*",
+    "docs"
+  ],
+  "scripts": {
+    "docs:dev": "bun run --cwd docs dev",
+    "docs:build": "bun run --cwd docs build",
+    "docs:preview": "bun run --cwd docs preview"
+  }
 }

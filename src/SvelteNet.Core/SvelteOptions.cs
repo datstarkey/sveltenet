@@ -1,7 +1,17 @@
 namespace SvelteNet;
 
+using System.Reflection;
+
 public class SvelteOptions
 {
+	/// <summary>
+	/// Assemblies scanned for [SvelteRemote] services, [SvelteComponent] models, and
+	/// SveltePage types. Set automatically to the assembly calling AddSvelteNet; add
+	/// more when those types live in other projects. Empty means "scan every loaded
+	/// assembly" (the pre-scoped fallback).
+	/// </summary>
+	public IReadOnlyList<Assembly>? ApplicationAssemblies { get; set; }
+
 	/// <summary>
 	/// Root directory the paths below are resolved against. Set automatically to the
 	/// ASP.NET content root when using AddSvelteNet.

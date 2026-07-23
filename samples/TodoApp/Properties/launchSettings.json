@@ -1,0 +1,11 @@
+{
+	"profiles": {
+		"TodoApp": {
+			"commandName": "Project",
+			"applicationUrl": "http://localhost:5210",
+			"environmentVariables": {
+				"ASPNETCORE_ENVIRONMENT": "Development"
+			}
+		}
+	}
+}

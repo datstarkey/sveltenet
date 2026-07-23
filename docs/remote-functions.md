@@ -17,7 +17,7 @@ public class TodoApi(TodoStore store)
 }
 ```
 
-The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Generators** (a Roslyn source generator) compiles the dispatchers — argument binding and invocation are generated code, no reflection (a reflection fallback covers projects without the analyzer):
+The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Generators** (a Roslyn source generator) compiles the dispatchers — argument binding, invocation, *and registration* are generated code with no reflection: each service's descriptor self-registers via a `[ModuleInitializer]`, and `AddSvelteNet()` consumes those descriptors, scoped to the calling assembly (see [Options → Discovery scope](options.md#discovery-scope)). A reflection fallback covers projects without the analyzer. The full flow lives in `samples/RemoteFunctions`:
 
 ```svelte
 <script lang="ts">

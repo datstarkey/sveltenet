@@ -12,6 +12,15 @@
 | `EnableSsr` / `EnableCsr` | — | `true` | Per-component override via `ComponentOptions` |
 | `IsDev` | — | auto | From `IWebHostEnvironment.IsDevelopment()` |
 | `EnableScaffolding` | — | follows `IsDev` | Type generation + scaffolding on startup |
+| `ApplicationAssemblies` | — | calling assembly | Discovery scope for `[SvelteRemote]`, `[SvelteComponent]`, and `SveltePage` types |
+
+## Discovery scope
+
+`AddSvelteNet()` discovers remote services from the **assembly that calls it** — generated descriptors register themselves via module initializers, so nothing is scanned at runtime. If your `[SvelteRemote]` services or page models live in other projects, pass their assemblies:
+
+```csharp
+builder.Services.AddSvelteNet(configure: null, typeof(MyApi).Assembly, typeof(Program).Assembly);
+```
 
 ## SSR engine
 
