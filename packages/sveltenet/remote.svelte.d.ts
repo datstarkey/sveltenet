@@ -74,3 +74,11 @@ export declare function form<T, F = Record<string, unknown>>(path: string): Remo
 
 /** Refreshes every query created on this page. */
 export declare function refreshAll(): Promise<unknown[]>;
+
+/**
+ * Makes a boundary's pending snippet client-only so SSR awaits and renders the
+ * real content: `<svelte:boundary pending={clientPending(loading)}>`. A static
+ * `{#snippet pending()}` would make the compiler drop the children from the
+ * server bundle entirely.
+ */
+export declare function clientPending<T>(snippet: T): T | undefined;

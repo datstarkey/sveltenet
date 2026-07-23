@@ -1,11 +1,36 @@
 // SvelteKit-style remote functions backed by [SvelteRemote] C# services.
 // Use through the generated `Svelte/remote.ts` — it wires paths and types.
+import { hydratable } from 'svelte';
 import { createAttachmentKey } from 'svelte/attachments';
 import { REMOTE_BASE, queryUrl, readResponse } from './remote-shared.js';
 
 const HEADERS = { 'x-sveltenet': 'true' };
-// No fetch inside the .NET SSR engine — queries stay in `loading` during SSR.
 const canFetch = typeof fetch === 'function';
+const isServer = typeof window === 'undefined';
+
+/**
+ * Queries fetched during SSR are stashed into the page head (devalue-serialized)
+ * and reused during hydration instead of re-fetching. Falls back to a plain fetch
+ * when hydratable is unavailable (experimental async disabled).
+ */
+function stash(key, fn) {
+	try {
+		return hydratable(key, fn);
+	} catch (error) {
+		console.warn(`[sveltenet] hydratable unavailable for '${key}': ${error?.message ?? error}`);
+		return fn();
+	}
+}
+
+/**
+ * For fully server-rendered awaits: a static `{#snippet pending()}` makes the
+ * compiler DROP the boundary's children from the server bundle. Passing the
+ * snippet through this helper (`<svelte:boundary pending={clientPending(loading)}>`)
+ * keeps it client-only, so SSR awaits and renders the real content.
+ */
+export function clientPending(snippet) {
+	return isServer ? undefined : snippet;
+}
 
 const activeQueries = new Set();
 
@@ -22,16 +47,25 @@ class RemoteQuery {
 	constructor(path, args) {
 		this.#path = path;
 		this.#args = args;
-		this.#promise = canFetch ? this.#fetch() : new Promise(() => {});
+		// hydratable: SSR fetches once (via the in-process bridge), serializes the
+		// result into the head, and hydration adopts it without re-fetching.
+		this.#promise = canFetch
+			? this.#track(stash(`sveltenet:${path}:${JSON.stringify(args ?? null)}`, () => Promise.resolve(this.#request())))
+			: new Promise(() => {});
 		this.#promise.catch(() => {});
 	}
 
-	async #fetch() {
+	async #request() {
+		const response = await fetch(queryUrl(this.#path, this.#args), { headers: HEADERS });
+		const { value, issues } = await readResponse(response, this.#path);
+		if (issues) throw Object.assign(new Error(`Query '${this.#path}' was invalid`), { issues });
+		return value;
+	}
+
+	async #track(promise) {
 		this.loading = true;
 		try {
-			const response = await fetch(queryUrl(this.#path, this.#args), { headers: HEADERS });
-			const { value, issues } = await readResponse(response, this.#path);
-			if (issues) throw Object.assign(new Error(`Query '${this.#path}' was invalid`), { issues });
+			const value = await promise;
 			this.current = value;
 			this.error = undefined;
 			return value;
@@ -44,7 +78,8 @@ class RemoteQuery {
 	}
 
 	refresh() {
-		this.#promise = this.#fetch();
+		// Always a real fetch — the hydration stash is only for the initial value.
+		this.#promise = this.#track(this.#request());
 		this.#version += 1;
 		return this.#promise;
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { clientPending } from 'sveltenet/remote';
 	import { createTodo, getStats, getTodos, toggleTodo } from './remote';
 
 	// Queries are cached and deduped: getTodos() === getTodos().
@@ -13,11 +14,14 @@
 <main>
 	<h1>Remote functions</h1>
 
-	<!-- experimental async: await queries directly; the boundary shows pending state -->
-	<svelte:boundary>
-		{#snippet pending()}
-			<p>loading…</p>
-		{/snippet}
+	{#snippet loading()}
+		<p>loading…</p>
+	{/snippet}
+
+	<!-- experimental async: await queries directly. clientPending keeps the pending
+	     snippet client-only, so SSR awaits the queries (via the in-process fetch
+	     bridge) and renders the real content; hydration adopts it from the stash. -->
+	<svelte:boundary pending={clientPending(loading)}>
 
 		<ul>
 			{#each await todos as todo (todo.id)}

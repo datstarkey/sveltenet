@@ -64,4 +64,17 @@ sveltenet({ experimentalAsync: true })
 
 `refresh()` (and `command(...).updates(...)`) re-runs the awaits automatically.
 
-**SSR**: an in-process fetch bridge (`ISvelteSsrFetchHandler`, implemented by `RemoteSsrFetchHandler`) routes `fetch` calls made inside the SSR engine straight to the [Query] descriptors — no HTTP round-trip — and the engine serves a `node:async_hooks` shim so Svelte's async server runtime loads. Await-style pages SSR without crashing; currently boundaries render their `pending` snippet server-side and resolve on the client (fully-awaited SSR HTML is a known follow-up).
+**SSR**: an in-process fetch bridge (`ISvelteSsrFetchHandler` / `RemoteSsrFetchHandler`) routes `fetch` calls made inside the SSR engine straight to the [Query] descriptors — no HTTP round-trip — and the engine serves a `node:async_hooks` shim so Svelte's async server runtime loads.
+
+**Fully awaited SSR + hydration stash**: a static `{#snippet pending()}` makes Svelte's compiler DROP the boundary's children from the server bundle (pending always renders, even in Node). Pass the snippet through `clientPending` instead:
+
+```svelte
+{#snippet loading()}<p>loading…</p>{/snippet}
+<svelte:boundary pending={clientPending(loading)}>
+	{#each await getTodos() as todo (todo.id)}...{/each}
+</svelte:boundary>
+```
+
+The server then awaits the queries (through the bridge) and renders the real HTML, and query results are stashed via Svelte's `hydratable` into the page head (`window.__svelte.h`) — hydration adopts them with **zero network requests**. `refresh()` always performs a real fetch.
+
+Known issue: after a hydratable-adopted hydration, `refresh()`/`.updates()` responses update query state but the awaited template may not re-render (works in the non-hydrated CSR path) — under investigation.

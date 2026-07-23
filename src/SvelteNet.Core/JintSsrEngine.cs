@@ -32,6 +32,11 @@ public class JintSsrEngine : ISvelteSsrEngine
 		// module cache, so returning it would poison future renders.
 		var component = engine.Modules.Import("./" + componentModule).Get("default");
 		var renderFn = engine.Modules.Import("./" + renderModule).Get("renderComponent");
+
+		// Drain pending continuations (e.g. Svelte lazily imports node:async_hooks and
+		// installs AsyncLocalStorage in a .then) so async-context tracking — which
+		// hydratable depends on — is in place before rendering starts.
+		engine.Evaluate("Promise.resolve()").UnwrapIfPromise();
 		var props = propsJson is null ? JsValue.Undefined : new JsonParser(engine).Parse(propsJson);
 
 		// renderComponent is async — await-expression trees resolve through the fetch bridge.
