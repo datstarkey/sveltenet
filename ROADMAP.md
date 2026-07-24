@@ -6,6 +6,7 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 
 - **Publish packages** — `SvelteNet.Core` + `SvelteNet.AspNetCore` to NuGet (bundling `SvelteNet.Generators` as an analyzer and `SvelteNet.Build.targets` in the package `build/` folder so consumers get build-time type generation automatically), and the `sveltenet` package to npm. Includes a versioning/release flow.
 - **Test CI** — the docs deploy is the only workflow; PRs (including Dependabot's) should run `dotnet test` + the JS tests + sample vite builds.
+- **Proper validation (BYOV — bring your own validation)** — today validation feedback means hand-throwing `RemoteInvalidException` per field (remote functions) or `ModelState` errors (pages). Add a validation abstraction that runs before dispatch and feeds the existing per-field `issues` protocol, so `fields.x.issues()`, `aria-invalid`, and the `X-SvelteNet-Validate` validate-only flow light up automatically regardless of validator: DataAnnotations support built in, a FluentValidation adapter package (still free/Apache 2.0 — unlike some of the .NET ecosystem's recent commercial moves — though worth sponsoring), and the same interface as the escape hatch for anything custom.
 
 ## Later
 
