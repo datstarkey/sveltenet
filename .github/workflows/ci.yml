@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun audit
@@ -33,6 +36,8 @@ jobs:
         working-directory: packages/sveltenet
       - run: bun run check
         working-directory: packages/sveltenet
+      - run: dotnet restore SvelteNet.slnx
+      - run: dotnet build SvelteNet.slnx --no-restore --configuration Release
       - run: bun run check
         working-directory: samples/MvcHello
       - run: bun run build
