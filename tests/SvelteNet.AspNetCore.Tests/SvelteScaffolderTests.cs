@@ -42,7 +42,7 @@ public class SvelteScaffolderTests : IDisposable
 		Assert.Contains("export interface HomeData", types);
 		Assert.Contains("title: string;", types);
 		Assert.Contains("widgets: Widget[];", types);
-		Assert.Contains("modelState: Record<string, string[]>;", types);
+		Assert.Contains("problem: { title: string; status: number; errors: Record<string, string[]> } | null;", types);
 		Assert.Contains("antiforgeryToken: string;", types);
 		Assert.Contains("import type { Widget } from './types';", types);
 	}

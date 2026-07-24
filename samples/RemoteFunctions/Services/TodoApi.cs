@@ -33,7 +33,7 @@ public class TodoApi(TodoStore store)
 	public async Task<Todo> CreateTodo(string label, Priority priority)
 	{
 		if (string.IsNullOrWhiteSpace(label))
-			throw new RemoteInvalidException(nameof(label), "A label is required.");
+			throw new SvelteValidationException(nameof(label), "A label is required.");
 
 		await Task.Yield();
 		store.Add(label.Trim(), priority);

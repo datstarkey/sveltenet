@@ -52,9 +52,11 @@ test('post/redirect/get flow updates data and resets the form', async () => {
 	assert.equal(form.querySelector('input').value, 'default', 'form should reset after success');
 });
 
-test('validation failure applies data without resetting the form', async () => {
+test('validation failure applies the problem data without resetting the form', async () => {
 	const { window, form } = setupDom();
-	const calls = stubFetch([{ data: { modelState: { newLabel: ['required'] } } }]);
+	// 400 problem+json: the `data` extension member still carries the fresh props
+	const problemData = { problem: { status: 400, errors: { newLabel: ['required'] } } };
+	const calls = stubFetch([{ status: 400, errors: { newLabel: ['required'] }, data: problemData }]);
 	const updates = [];
 	enhance({ onUpdate: (d) => updates.push(d) })(form);
 
@@ -62,7 +64,7 @@ test('validation failure applies data without resetting the form', async () => {
 	await submit(window, form);
 
 	assert.equal(calls.length, 1);
-	assert.deepEqual(updates, [{ modelState: { newLabel: ['required'] } }]);
+	assert.deepEqual(updates, [problemData]);
 	assert.equal(form.querySelector('input').value, 'typed by user', 'failed submits keep user input');
 });
 

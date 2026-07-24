@@ -14,7 +14,8 @@
 	let filter: 'all' | 'active' | 'done' = $state('all');
 	let visible = $derived(data.todos.filter((t) => filter === 'all' || (filter === 'done') === t.done));
 	let remaining = $derived(data.todos.filter((t) => !t.done).length);
-	let errors = $derived(Object.values(data.modelState).flat());
+	// data.problem is an RFC 9457 validation problem (or null when valid)
+	let errors = $derived(data.problem ? Object.values(data.problem.errors).flat() : []);
 </script>
 
 <svelte:head>

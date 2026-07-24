@@ -19,7 +19,9 @@ export function mountComponent(component, options) {
  *
  * Submits via fetch with an X-SvelteNet header; SveltePage answers with the fresh
  * `data` prop as JSON (following post/redirect/get as a second fetch) and `onUpdate`
- * applies it to the island — no page reload. Without JS the form posts normally.
+ * applies it to the island — no page reload. Validation failures arrive as an
+ * RFC 9457 problem details response (400) whose `data` extension still carries the
+ * fresh props, with the errors in `data.problem`. Without JS the form posts normally.
  *
  * @template TData
  * @param {import('./client.d.ts').EnhanceOptions<TData>} [options]

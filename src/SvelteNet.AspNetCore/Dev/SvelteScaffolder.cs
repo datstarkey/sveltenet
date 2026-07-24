@@ -78,7 +78,8 @@ public static class SvelteScaffolder
 		var props = SvelteProps(page);
 		var fields = props
 			.Select(p => $"\t{p.Name.ToCamelCase()}: {p.PropertyType.TsType()};")
-			.Append("\tmodelState: Record<string, string[]>;")
+			.Append("\t/** RFC 9457 validation problem (ASP.NET `errors` member); null when the model state is valid. */")
+			.Append("\tproblem: { title: string; status: number; errors: Record<string, string[]> } | null;")
 			.Append("\tantiforgeryToken: string;");
 
 		var imports = new SortedSet<string>(StringComparer.Ordinal);

@@ -6,7 +6,7 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 
 - **Publish packages** — `SvelteNet.Core` + `SvelteNet.AspNetCore` to NuGet (bundling `SvelteNet.Generators` as an analyzer and `SvelteNet.Build.targets` in the package `build/` folder so consumers get build-time type generation automatically), and the `sveltenet` package to npm. Includes a versioning/release flow.
 - **Test CI** — the docs deploy is the only workflow; PRs (including Dependabot's) should run `dotnet test` + the JS tests + sample vite builds.
-- **Proper validation (BYOV — bring your own validation)** — today validation feedback means hand-throwing `RemoteInvalidException` per field (remote functions) or `ModelState` errors (pages). Add a validation abstraction that runs before dispatch and feeds the existing per-field `issues` protocol, so `fields.x.issues()`, `aria-invalid`, and the `X-SvelteNet-Validate` validate-only flow light up automatically regardless of validator: DataAnnotations support built in, a FluentValidation adapter package (still free/Apache 2.0 — unlike some of the .NET ecosystem's recent commercial moves — though worth sponsoring), and the same interface as the escape hatch for anything custom.
+- **Proper validation (BYOV — bring your own validation)** — the wire format is now standard RFC 9457 problem details end to end; what's left is a validation abstraction that runs before dispatch and populates it, instead of hand-throwing `SvelteValidationException` per field. DataAnnotations support built in, a FluentValidation adapter package (still free/Apache 2.0 — unlike some of the .NET ecosystem's recent commercial moves — though worth sponsoring), and the same interface as the escape hatch for anything custom. `fields.x.issues()`, `aria-invalid`, and `X-SvelteNet-Validate` then light up automatically for any validator.
 
 ## Later
 
@@ -26,3 +26,4 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 - Build-time TypeScript generation (`SvelteNet.Build` MSBuild target)
 - Samples split by concept (`TodoApp`, `RemoteFunctions`, `MvcHello`), all integration-tested
 - VitePress docs site deployed to GitHub Pages; Dependabot across actions/bun/NuGet
+- Validation errors as RFC 9457 problem details (`application/problem+json`, ASP.NET `errors` member) across remote functions, the SSR bridge, and enhanced page posts

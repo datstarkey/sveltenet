@@ -11,7 +11,7 @@ public class TodoApi(TodoStore store)
     [Form]    public Task<Todo> CreateTodo(string label, Priority priority)
     {
         if (string.IsNullOrWhiteSpace(label))
-            throw new RemoteInvalidException(nameof(label), "A label is required.");
+            throw new SvelteValidationException(nameof(label), "A label is required.");
         // ...
     }
 }
@@ -42,6 +42,8 @@ The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Gen
 ```
 
 Semantics mirror SvelteKit: queries are GET, cached, with `current`/`loading`/`error`, `refresh()`, and `set()`; commands are POST JSON promises with `.updates(...queries)`; forms spread onto `<form>`, expose `fields` (`as()`, `issues()`, `value()`, `set()`), `pending`, `result`, `validate()`, `enhance(cb)` with `form.submit()`, and `for(id)` for lists — and post/redirect without JavaScript. Successful form submits refresh all page queries. Endpoints live under `/_sveltenet/remote` (customize/authorize via `MapSvelteRemote`).
+
+**Validation is standard problem details** ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): binding failures and `SvelteValidationException` (field → message, the SvelteKit `invalid(...)` equivalent) become a `400 application/problem+json` response with the ASP.NET `errors` member (`Results.ValidationProblem`), so any problem-details-aware tooling parses it. The client maps `errors` onto each field's `issues()`; errors with an empty field name are form-level and appear in `fields.allIssues()`. `X-SvelteNet-Validate` runs binding only (204 when valid, problem details when not).
 
 ## Await expressions (experimental)
 

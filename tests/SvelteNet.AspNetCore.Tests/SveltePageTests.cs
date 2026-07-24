@@ -59,14 +59,25 @@ public class SveltePageTests
 	}
 
 	[Fact]
-	public void Model_state_errors_are_passed_with_camel_cased_keys()
+	public void Model_state_errors_are_passed_as_a_validation_problem_with_camel_cased_keys()
 	{
 		var page = CreatePage<HomeModel>("/Home");
 		page.ModelState.AddModelError("NewLabel", "A label is required.");
 
 		var html = page.Svelte().ToString()!;
 
-		Assert.Contains("\"newLabel\":[\"A label is required.\"]", html);
+		Assert.Contains("\"problem\":{", html);
+		Assert.Contains("\"errors\":{\"newLabel\":[\"A label is required.\"]}", html);
+	}
+
+	[Fact]
+	public void Problem_is_null_when_model_state_is_valid()
+	{
+		var page = CreatePage<HomeModel>("/Home");
+
+		var html = page.Svelte().ToString()!;
+
+		Assert.Contains("\"problem\":null", html);
 	}
 
 	[Fact]

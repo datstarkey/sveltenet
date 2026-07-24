@@ -114,14 +114,16 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 	}
 
 	[Fact]
-	public async Task Form_handlers_report_remote_invalid_issues_per_field()
+	public async Task Form_handlers_report_validation_errors_as_problem_details()
 	{
 		var response = await _factory.CreateClient().SendAsync(
 			Form("TodoApi/CreateTodo", new() { ["label"] = "   ", ["priority"] = "Low" }));
 
+		// RFC 9457 with the ASP.NET `errors` member (HttpValidationProblemDetails).
 		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+		Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
 		var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
-		Assert.Equal("A label is required.", json.GetProperty("issues").GetProperty("label")[0].GetProperty("message").GetString());
+		Assert.Equal("A label is required.", json.GetProperty("errors").GetProperty("label")[0].GetString());
 	}
 
 	[Fact]

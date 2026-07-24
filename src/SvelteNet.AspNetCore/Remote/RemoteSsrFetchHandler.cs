@@ -49,8 +49,15 @@ internal sealed class RemoteSsrFetchHandler(
 		var args = new RemoteArguments { Json = argsJson is null ? null : JsonDocument.Parse(argsJson).RootElement };
 		var result = descriptor.Invoke(instance, args).AsTask().GetAwaiter().GetResult();
 
-		if (args.Issues is not null)
-			return (400, JsonSerializer.Serialize(new { issues = args.Issues }, SvelteJson.Options));
+		// Same RFC 9457 shape the HTTP endpoints produce, so the client transport
+		// parses SSR-bridged responses identically.
+		if (args.Errors is not null)
+			return (400, JsonSerializer.Serialize(new
+			{
+				title = "One or more validation errors occurred.",
+				status = 400,
+				errors = args.Errors
+			}, SvelteJson.Options));
 		return result is null ? (204, null) : (200, JsonSerializer.Serialize(result, SvelteJson.Options));
 	}
 }

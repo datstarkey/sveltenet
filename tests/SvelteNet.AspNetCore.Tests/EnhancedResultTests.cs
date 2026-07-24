@@ -63,13 +63,32 @@ public class EnhancedResultTests
 	{
 		var page = CreatePage();
 		page.Title = "fresh";
-		page.ModelState.AddModelError("NewLabel", "required");
 
 		var json = Serialize(page.Enhanced(new PageResult()));
 
 		Assert.Contains("\"data\":", json);
 		Assert.Contains("\"title\":\"fresh\"", json);
-		Assert.Contains("\"newLabel\":[\"required\"]", json);
+		Assert.Contains("\"problem\":null", json);
+	}
+
+	[Fact]
+	public void Invalid_model_state_becomes_a_problem_details_response_with_data()
+	{
+		var page = CreatePage();
+		page.Title = "fresh";
+		page.ModelState.AddModelError("NewLabel", "required");
+
+		var result = Assert.IsType<JsonResult>(page.Enhanced(new PageResult()));
+		var json = JsonSerializer.Serialize(result.Value, SvelteRenderer.JsonOptions);
+
+		// RFC 9457 envelope: 400, application/problem+json, ASP.NET `errors` member,
+		// plus a `data` extension so the island still re-renders with fresh props.
+		Assert.Equal(StatusCodes.Status400BadRequest, result.StatusCode);
+		Assert.Equal("application/problem+json", result.ContentType);
+		Assert.Contains("\"title\":\"One or more validation errors occurred.\"", json);
+		Assert.Contains("\"errors\":{\"newLabel\":[\"required\"]}", json);
+		Assert.Contains("\"data\":", json);
+		Assert.Contains("\"title\":\"fresh\"", json);
 	}
 
 	[Fact]

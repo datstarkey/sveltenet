@@ -2,6 +2,7 @@ namespace SvelteNet.AspNetCore;
 
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Html;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -38,9 +39,7 @@ public abstract class SveltePage : PageModel
 			.ToArray());
 
 		var data = props.ToDictionary(p => p.Name.ToCamelCase(), object? (p) => p.GetValue(this));
-		data["modelState"] = ModelState
-			.Where(kv => kv.Value?.Errors.Count > 0)
-			.ToDictionary(kv => kv.Key, kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+		data["problem"] = ValidationProblem();
 		data["antiforgeryToken"] = HttpContext.RequestServices
 			.GetService<IAntiforgery>()?.GetAndStoreTokens(HttpContext).RequestToken ?? string.Empty;
 
@@ -61,13 +60,48 @@ public abstract class SveltePage : PageModel
 	protected bool IsEnhancedRequest => Request.Headers.ContainsKey("X-SvelteNet");
 
 	/// <summary>
+	/// ValidationProblemDetails-shaped view of ModelState (RFC 9457 `errors` member),
+	/// or null when the model state is valid. Rendered into the data prop as `problem`
+	/// so SSR re-renders (no-JS posts) and enhanced responses share one errors shape.
+	/// </summary>
+	private object? ValidationProblem()
+	{
+		if (ModelState.IsValid) return null;
+		return new
+		{
+			Title = "One or more validation errors occurred.",
+			Status = StatusCodes.Status400BadRequest,
+			Errors = ModelState
+				.Where(kv => kv.Value?.Errors.Count > 0)
+				.ToDictionary(kv => kv.Key, kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray())
+		};
+	}
+
+	/// <summary>
 	/// Answers enhanced requests with JSON instead of HTML: a page render becomes the
-	/// fresh props bag (so validation errors round-trip through modelState), and a
-	/// redirect (post/redirect/get) becomes a payload the client follows with a
-	/// second enhanced fetch. Anything else is left untouched.
+	/// fresh props bag, a redirect (post/redirect/get) becomes a payload the client
+	/// follows with a second enhanced fetch, and validation failures become an RFC 9457
+	/// problem details response (400, application/problem+json) whose `data` extension
+	/// member carries the fresh props so the island still re-renders.
 	/// </summary>
 	protected virtual IActionResult? CreateEnhancedResult(IActionResult? result) => result switch
 	{
+		PageResult when !ModelState.IsValid => new JsonResult(
+			new
+			{
+				Type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+				Title = "One or more validation errors occurred.",
+				Status = StatusCodes.Status400BadRequest,
+				Errors = ModelState
+					.Where(kv => kv.Value?.Errors.Count > 0)
+					.ToDictionary(kv => kv.Key, kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray()),
+				Data = ((Dictionary<string, object?>)SvelteComponentOptions().Props!)["data"]
+			},
+			SvelteRenderer.JsonOptions)
+		{
+			StatusCode = StatusCodes.Status400BadRequest,
+			ContentType = "application/problem+json"
+		},
 		PageResult => new JsonResult(SvelteComponentOptions().Props, SvelteRenderer.JsonOptions),
 		RedirectToPageResult r => new JsonResult(
 			new { redirect = Url.Page(r.PageName, r.PageHandler, r.RouteValues) ?? Request.Path.Value },

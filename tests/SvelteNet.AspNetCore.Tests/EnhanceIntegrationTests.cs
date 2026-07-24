@@ -55,7 +55,7 @@ public class EnhanceIntegrationTests : IClassFixture<TodoAppFactory>
 		Assert.Equal("SvelteNet Todos", data.GetProperty("title").GetString());
 		Assert.True(data.GetProperty("todos").GetArrayLength() > 0);
 		Assert.NotEmpty(token);
-		Assert.Equal(JsonValueKind.Object, data.GetProperty("modelState").ValueKind);
+		Assert.Equal(JsonValueKind.Null, data.GetProperty("problem").ValueKind);
 	}
 
 	[Fact]
@@ -76,17 +76,22 @@ public class EnhanceIntegrationTests : IClassFixture<TodoAppFactory>
 	}
 
 	[Fact]
-	public async Task Enhanced_post_with_validation_errors_returns_model_state()
+	public async Task Enhanced_post_with_validation_errors_returns_problem_details_with_data()
 	{
 		var client = CreateClient();
 		var (_, token) = await GetData(client);
 
-		var json = await ReadJson(await client.SendAsync(
-			EnhancedPost("/", token, ("NewLabel", ""), ("NewPriority", "Low"))));
+		var response = await client.SendAsync(
+			EnhancedPost("/", token, ("NewLabel", ""), ("NewPriority", "Low")));
 
-		Assert.False(json.TryGetProperty("redirect", out _));
-		var errors = json.GetProperty("data").GetProperty("modelState").GetProperty("newLabel");
-		Assert.Equal("A label is required.", errors[0].GetString());
+		// RFC 9457: 400 + application/problem+json + `errors` member; the `data`
+		// extension carries fresh props (with data.problem) for the re-render.
+		Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+		Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+		var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+		Assert.Equal("A label is required.", json.GetProperty("errors").GetProperty("newLabel")[0].GetString());
+		var problem = json.GetProperty("data").GetProperty("problem");
+		Assert.Equal("A label is required.", problem.GetProperty("errors").GetProperty("newLabel")[0].GetString());
 	}
 
 	[Fact]

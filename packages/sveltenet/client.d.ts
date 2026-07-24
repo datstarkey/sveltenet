@@ -9,8 +9,15 @@ export interface MountOptions {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export declare function mountComponent(component: Component<any>, options: MountOptions): Record<string, unknown>;
 
+/** RFC 9457 validation problem with the ASP.NET `errors` member. */
+export interface ValidationProblem {
+	title: string;
+	status: number;
+	errors: Record<string, string[]>;
+}
+
 export interface EnhanceOptions<TData = unknown> {
-	/** Receives the fresh `data` prop after the handler ran (including modelState on validation failure). */
+	/** Receives the fresh `data` prop after the handler ran (its `problem` field carries validation errors). */
 	onUpdate?: (data: TData) => void;
 	/** Called on network/parse failure. Without it the error is rethrown. */
 	onError?: (error: unknown) => void;

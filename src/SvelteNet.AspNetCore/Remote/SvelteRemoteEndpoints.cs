@@ -21,7 +21,7 @@ internal static class SvelteRemoteEndpoints
 			}
 			catch (JsonException)
 			{
-				return Results.BadRequest(new { error = "Malformed args." });
+				return Results.Problem(detail: "Malformed args.", statusCode: StatusCodes.Status400BadRequest);
 			}
 		}
 
@@ -39,7 +39,7 @@ internal static class SvelteRemoteEndpoints
 
 			// Plain form posts can't set custom headers — require same-origin instead.
 			if (!enhanced && !IsSameOrigin(context))
-				return Results.BadRequest(new { error = "Cross-origin form post rejected." });
+				return Results.Problem(detail: "Cross-origin form post rejected.", statusCode: StatusCodes.Status400BadRequest);
 
 			var form = await context.Request.ReadFormAsync(context.RequestAborted);
 			var args = new RemoteArguments
@@ -60,7 +60,7 @@ internal static class SvelteRemoteEndpoints
 		}
 
 		if (!enhanced)
-			return Results.BadRequest(new { error = "Missing X-SvelteNet header." });
+			return Results.Problem(detail: "Missing X-SvelteNet header.", statusCode: StatusCodes.Status400BadRequest);
 
 		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
@@ -79,14 +79,17 @@ internal static class SvelteRemoteEndpoints
 		{
 			result = await descriptor.Invoke(instance, args);
 		}
-		catch (RemoteInvalidException invalid)
+		catch (SvelteValidationException invalid)
 		{
-			foreach (var (field, message) in invalid.Issues)
-				args.AddIssue(field.Length == 0 ? "" : TypeGen.StringExtensions.ToCamelCase(field), message);
+			foreach (var (field, messages) in invalid.Errors)
+			foreach (var message in messages)
+				args.AddError(field.Length == 0 ? "" : TypeGen.StringExtensions.ToCamelCase(field), message);
 		}
 
-		if (args.Issues is not null)
-			return Results.BadRequest(new { issues = args.Issues });
+		// RFC 9457 problem details with the standard ASP.NET `errors` member
+		// (HttpValidationProblemDetails) — application/problem+json, status 400.
+		if (args.Errors is not null)
+			return Results.ValidationProblem(args.Errors.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray()));
 		if (args.ValidateOnly)
 			return Results.NoContent();
 

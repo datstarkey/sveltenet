@@ -20,7 +20,7 @@ bun run docs:build                            # VitePress docs site (config in d
 
 - `docs/getting-started.md` — setup flow, scaffolded file list
 - `docs/dev-mode.md` — dev/HMR behavior, `dotnet watch` + vite workflow
-- `docs/forms.md` — SveltePage forms, `modelState`, antiforgery, `enhance()`
+- `docs/forms.md` — SveltePage forms, `data.problem` validation errors, antiforgery, `enhance()`
 - `docs/mvc.md` — `[SvelteComponent]`, `@Html.Svelte`, duplicate-render rules
 - `docs/remote-functions.md` — `[Query]`/`[Command]`/`[Form]`, client API, generator, SSR/hydration
 - `docs/options.md` — `SvelteOptions` ↔ vite plugin option pairing, discovery scope, SSR engine
@@ -34,6 +34,7 @@ Code samples in docs must compile against the current API — treat a doc snippe
 
 - **SvelteNet.Core stays host-agnostic** — no MVC/Razor/HTTP dependencies (Blazor hosting is planned). New transports go in `SvelteNet.AspNetCore` as minimal-API endpoints, not MVC filters.
 - **One serialization contract**: `SvelteJson.Options` (camelCase props, dict keys, enums). The TS generator (`TypeGen/`) must always match it — a TS type that disagrees with the JSON is a bug.
+- **Validation errors are RFC 9457 problem details** (400, `application/problem+json`, ASP.NET `errors` member) everywhere: remote endpoints via `Results.ValidationProblem`, the SSR fetch bridge, and enhanced SveltePage posts (whose `data` extension member carries fresh props; SSR props expose the same shape as `data.problem`). `SvelteValidationException` is the throwing API. Never invent a bespoke error shape.
 - **Paths contract**: manifest keys are `{PagesPath}/{Component}.svelte`; `SvelteOptions` (C#) and `sveltenet()` vite plugin options must agree (`PagesPath`/`pagesPath`, `ClientOutput`/`clientOutDir`, `ServerOutput`/`serverOutDir`). The SSR bundle is deliberately NOT under wwwroot.
 - **Remote dispatch AND registration are descriptor-based**: `SvelteNet.Generators` emits compiled dispatchers (module initializer → `SvelteRemoteDescriptors`); `AddSvelteNet` consumes registered descriptors scoped to the app's assemblies — no runtime reflection scan. Reflection (`FromReflection` + the `TypeDiscovery` fallback) only covers apps without the analyzer and must stay behaviorally identical to generated code. The scaffolder generates `Svelte/remote.ts` from the same descriptors.
 - **Discovery is assembly-scoped**: multiple SvelteNet apps share the test process, so `[SvelteRemote]`/`[SvelteComponent]`/`SveltePage` discovery must respect `SvelteOptions.ApplicationAssemblies` (defaults to the `AddSvelteNet` caller). An unscoped scan leaks one sample's services into another's container.

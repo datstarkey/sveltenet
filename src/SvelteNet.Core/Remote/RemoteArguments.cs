@@ -5,9 +5,10 @@ using System.Text.Json;
 
 /// <summary>
 /// Argument source for a remote call: JSON (query/command) or form fields ([Form]).
-/// Get() collects binding failures as per-field issues instead of throwing, so a
+/// Get() collects binding failures as per-field errors instead of throwing, so a
 /// submission reports every problem at once. Generated dispatchers check CanInvoke
 /// after binding and skip the method call when binding failed (or in validate-only mode).
+/// Errors use the ValidationProblemDetails shape (field → messages) end to end.
 /// </summary>
 public sealed class RemoteArguments
 {
@@ -16,15 +17,15 @@ public sealed class RemoteArguments
 	public bool ValidateOnly { get; init; }
 	public CancellationToken CancellationToken { get; init; }
 
-	public Dictionary<string, List<object>>? Issues { get; private set; }
+	public Dictionary<string, List<string>>? Errors { get; private set; }
 
-	public bool CanInvoke => Issues is null && !ValidateOnly;
+	public bool CanInvoke => Errors is null && !ValidateOnly;
 
-	public void AddIssue(string field, string message)
+	public void AddError(string field, string message)
 	{
-		Issues ??= new Dictionary<string, List<object>>();
-		if (!Issues.TryGetValue(field, out var list)) Issues[field] = list = [];
-		list.Add(new { message });
+		Errors ??= new Dictionary<string, List<string>>();
+		if (!Errors.TryGetValue(field, out var list)) Errors[field] = list = [];
+		list.Add(message);
 	}
 
 	public T? Get<T>(string name) => (T?)Get(name, typeof(T), hasDefault: false, defaultValue: default(T));
@@ -43,11 +44,11 @@ public sealed class RemoteArguments
 		}
 		catch (Exception e) when (e is JsonException or FormatException or ArgumentException or OverflowException)
 		{
-			AddIssue(name, $"Invalid value for '{name}'.");
+			AddError(name, $"Invalid value for '{name}'.");
 			return defaultValue;
 		}
 
-		if (!hasDefault) AddIssue(name, $"Missing argument '{name}'.");
+		if (!hasDefault) AddError(name, $"Missing argument '{name}'.");
 		return defaultValue;
 	}
 
