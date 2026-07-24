@@ -74,4 +74,4 @@ bun run docs:dev                        # documentation site
 
 ## Status
 
-Prototype — not yet published to NuGet or npm. Known gaps: the scaffolder's page-directory mapping assumes the `*.Pages.*` namespace convention; Blazor/Blazor-SSR hosting is on the roadmap.
+Prototype — not yet published to NuGet or npm. See [ROADMAP.md](ROADMAP.md) for what's next (publishing, test CI, Blazor/Blazor-SSR hosting) and what has shipped.

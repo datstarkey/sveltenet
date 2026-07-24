@@ -26,6 +26,7 @@ bun run docs:build                            # VitePress docs site (config in d
 - `docs/options.md` — `SvelteOptions` ↔ vite plugin option pairing, discovery scope, SSR engine
 - `README.md` — overview + doc links only; details belong in docs/
 - `packages/sveltenet/README.md` — npm-facing plugin/runtime docs
+- `ROADMAP.md` — move items to Shipped when they land; add/adjust items when plans change. Completing a roadmap item without updating this file is an incomplete change.
 
 Code samples in docs must compile against the current API — treat a doc snippet like a test that isn't executed. If behavior in a doc no longer matches reality, fixing the doc is part of the task, not a follow-up.
 
