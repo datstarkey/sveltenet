@@ -44,9 +44,14 @@ internal sealed class RemoteSsrFetchHandler(
 
 		var requestServices = httpContextAccessor.HttpContext?.RequestServices;
 		using var fallbackScope = requestServices is null ? rootProvider.CreateScope() : null;
-		var instance = (requestServices ?? fallbackScope!.ServiceProvider).GetRequiredService(service.ServiceType);
+		var provider = requestServices ?? fallbackScope!.ServiceProvider;
+		var instance = provider.GetRequiredService(service.ServiceType);
 
-		var args = new RemoteArguments { Json = argsJson is null ? null : JsonDocument.Parse(argsJson).RootElement };
+		var args = new RemoteArguments
+		{
+			Json = argsJson is null ? null : JsonDocument.Parse(argsJson).RootElement,
+			Validation = SvelteRemoteEndpoints.BuildValidation(provider, service.ServiceType, descriptor)
+		};
 		var result = descriptor.Invoke(instance, args).AsTask().GetAwaiter().GetResult();
 
 		// Same RFC 9457 shape the HTTP endpoints produce, so the client transport

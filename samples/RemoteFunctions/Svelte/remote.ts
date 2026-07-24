@@ -6,4 +6,5 @@ import type { Priority, Todo, TodoStats } from './types';
 export const createTodo = form<Todo, { label: string; priority: Priority }>('TodoApi/CreateTodo');
 export const getStats = query<TodoStats>('TodoApi/GetStats');
 export const getTodos = query<Todo[]>('TodoApi/GetTodos');
+export const subscribe = form<string, { email: string }>('TodoApi/Subscribe');
 export const toggleTodo = command<void, [id: number]>('TodoApi/ToggleTodo', (id) => ({ id }));

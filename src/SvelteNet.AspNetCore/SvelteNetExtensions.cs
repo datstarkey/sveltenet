@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Remote;
 using SvelteNet.Remote;
@@ -46,6 +47,10 @@ public static class SvelteNetExtensions
 		services.AddSingleton<ISvelteSsrFetchHandler, RemoteSsrFetchHandler>();
 		services.AddSingleton<ISvelteSsrEngine, JintSsrEngine>();
 		services.AddSingleton<SvelteRenderer>();
+
+		// BYOV: DataAnnotations run on remote-function arguments by default; register
+		// additional ISvelteRemoteValidator implementations for FluentValidation etc.
+		services.TryAddEnumerable(ServiceDescriptor.Singleton<ISvelteRemoteValidator, DataAnnotationsRemoteValidator>());
 
 		// [SvelteRemote] services, registered scoped and dispatched by MapSvelteRemote.
 		// The source generator's [ModuleInitializer]s have already registered compiled

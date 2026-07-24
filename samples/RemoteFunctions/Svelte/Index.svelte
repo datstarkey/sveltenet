@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { clientPending } from 'sveltenet/remote';
-	import { createTodo, getStats, getTodos, toggleTodo } from './remote';
+	import { createTodo, getStats, getTodos, subscribe, toggleTodo } from './remote';
 
 	// Queries are cached and deduped: getTodos() === getTodos().
 	const todos = getTodos();
@@ -55,6 +55,20 @@
 
 	{#if createTodo.result}
 		<p>Added "{createTodo.result.label}"!</p>
+	{/if}
+
+	<!-- [EmailAddress] on the C# parameter validates automatically (BYOV pipeline) —
+	     the frontend code is identical to any other validation failure -->
+	<form {...subscribe}>
+		{#each subscribe.fields.email.issues() ?? [] as issue}
+			<p class="error">{issue.message}</p>
+		{/each}
+		<input {...subscribe.fields.email.as('text')} placeholder="you@example.com" />
+		<button disabled={!!subscribe.pending}>Subscribe</button>
+	</form>
+
+	{#if subscribe.result}
+		<p>Subscribed {subscribe.result}!</p>
 	{/if}
 </main>
 

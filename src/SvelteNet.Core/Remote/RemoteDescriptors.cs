@@ -88,6 +88,7 @@ public static class SvelteRemoteDescriptors
 				: args.Get(p.Name!.ToCamelCase(), p.ParameterType, p.HasDefaultValue, p.HasDefaultValue ? p.DefaultValue : null);
 		}
 
+		await args.ValidateBoundAsync();
 		if (!args.CanInvoke) return null;
 
 		try

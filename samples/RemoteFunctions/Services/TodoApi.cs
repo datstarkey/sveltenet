@@ -2,6 +2,7 @@ namespace RemoteFunctions.Services;
 
 using RemoteFunctions.Models;
 using SvelteNet;
+using System.ComponentModel.DataAnnotations;
 
 public record TodoStats(int Total, int Completed, Dictionary<string, int> ByPriority);
 
@@ -39,4 +40,9 @@ public class TodoApi(TodoStore store)
 		store.Add(label.Trim(), priority);
 		return store.All[^1];
 	}
+
+	// DataAnnotations validate automatically (BYOV pipeline) — no imperative
+	// checks; an invalid email never reaches the method body.
+	[Form]
+	public string Subscribe([EmailAddress] string email) => email;
 }

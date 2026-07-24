@@ -43,7 +43,35 @@ The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Gen
 
 Semantics mirror SvelteKit: queries are GET, cached, with `current`/`loading`/`error`, `refresh()`, and `set()`; commands are POST JSON promises with `.updates(...queries)`; forms spread onto `<form>`, expose `fields` (`as()`, `issues()`, `value()`, `set()`), `pending`, `result`, `validate()`, `enhance(cb)` with `form.submit()`, and `for(id)` for lists — and post/redirect without JavaScript. Successful form submits refresh all page queries. Endpoints live under `/_sveltenet/remote` (customize/authorize via `MapSvelteRemote`).
 
-**Validation is standard problem details** ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): binding failures and `SvelteValidationException` (field → message, the SvelteKit `invalid(...)` equivalent) become a `400 application/problem+json` response with the ASP.NET `errors` member (`Results.ValidationProblem`), so any problem-details-aware tooling parses it. The client maps `errors` onto each field's `issues()`; errors with an empty field name are form-level and appear in `fields.allIssues()`. `X-SvelteNet-Validate` runs binding only (204 when valid, problem details when not).
+**Validation is standard problem details** ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)): binding failures, validator errors, and `SvelteValidationException` (field → message, the SvelteKit `invalid(...)` equivalent) all become a `400 application/problem+json` response with the ASP.NET `errors` member (`Results.ValidationProblem`), so any problem-details-aware tooling parses it. The client maps `errors` onto each field's `issues()`; errors with an empty field name are form-level and appear in `fields.allIssues()`. `X-SvelteNet-Validate` runs binding + validators only (204 when valid, problem details when not).
+
+**Validation runs automatically** (BYOV — bring your own validation). Registered `ISvelteRemoteValidator`s run after binding and before your method executes, for queries, commands, and forms alike. DataAnnotations work out of the box — on parameters and on the properties of complex argument types — with no imperative code:
+
+```csharp
+[Form] public string Subscribe([EmailAddress] string email) => email;
+```
+
+An invalid email never reaches the method body; the client shows it on `fields.email.issues()` exactly like any other error. Plug in anything else by registering more validators — e.g. a FluentValidation adapter:
+
+```csharp
+builder.Services.AddSingleton<ISvelteRemoteValidator, FluentValidationRemoteValidator>();
+
+public class FluentValidationRemoteValidator(IServiceProvider services) : ISvelteRemoteValidator
+{
+    public async ValueTask ValidateAsync(RemoteValidationContext context)
+    {
+        foreach (var (name, value) in context.Arguments)
+        {
+            if (value is null || services.GetService(typeof(IValidator<>).MakeGenericType(value.GetType())) is not IValidator validator) continue;
+            var result = await validator.ValidateAsync(new ValidationContext<object>(value), context.CancellationToken);
+            foreach (var failure in result.Errors)
+                context.AddError(JsonNamingPolicy.CamelCase.ConvertName(failure.PropertyName), failure.ErrorMessage);
+        }
+    }
+}
+```
+
+The frontend never changes: whichever validator produced the error, it arrives as the same problem details and lights up the same `issues()` / `aria-invalid` / `validate()` machinery. Razor Pages get the equivalent for free through `ModelState` — anything that writes to it (DataAnnotations, FluentValidation auto-validation, manual `AddModelError`) flows into `data.problem`.
 
 ## Await expressions (experimental)
 

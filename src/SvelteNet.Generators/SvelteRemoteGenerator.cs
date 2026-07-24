@@ -175,6 +175,7 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 					sb.AppendLine($"\t\t\tvar arg{i} = args.Get<{p.FullType}>(\"{p.JsonName}\");");
 			}
 
+			sb.AppendLine("\t\t\tawait args.ValidateBoundAsync();");
 			sb.AppendLine("\t\t\tif (!args.CanInvoke) return null;");
 			var call = $"service.{method.Name}({string.Join(", ", argNames.Select(a => a + "!"))})";
 			sb.AppendLine(method.ReturnShape switch

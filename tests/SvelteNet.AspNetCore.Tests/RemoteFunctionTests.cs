@@ -53,7 +53,7 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 
 		var descriptor = Assert.Single(registry.Services, s => s.Name == "TodoApi");
 		Assert.True(descriptor.IsGenerated);
-		Assert.Equal(4, descriptor.Methods.Length);
+		Assert.Equal(5, descriptor.Methods.Length);
 	}
 
 	[Fact]
@@ -124,6 +124,22 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
 		var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
 		Assert.Equal("A label is required.", json.GetProperty("errors").GetProperty("label")[0].GetString());
+	}
+
+	[Fact]
+	public async Task Data_annotations_on_parameters_validate_automatically()
+	{
+		var client = _factory.CreateClient();
+
+		// [EmailAddress] on the C# parameter — no imperative validation in the method.
+		var invalid = await client.SendAsync(Form("TodoApi/Subscribe", new() { ["email"] = "not-an-email" }));
+		Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+		Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+		var problem = JsonDocument.Parse(await invalid.Content.ReadAsStringAsync()).RootElement;
+		Assert.True(problem.GetProperty("errors").TryGetProperty("email", out var messages) && messages.GetArrayLength() > 0);
+
+		var valid = await ReadJson(await client.SendAsync(Form("TodoApi/Subscribe", new() { ["email"] = "a@b.com" })));
+		Assert.Equal("a@b.com", valid.GetString());
 	}
 
 	[Fact]

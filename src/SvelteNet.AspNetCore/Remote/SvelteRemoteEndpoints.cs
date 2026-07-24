@@ -9,7 +9,7 @@ internal static class SvelteRemoteEndpoints
 {
 	public static async Task<IResult> HandleGet(string service, string method, HttpContext context)
 	{
-		if (!TryResolve(context, service, method, RemoteKind.Query, out var descriptor, out var instance))
+		if (!TryResolve(context, service, method, RemoteKind.Query, out var serviceType, out var descriptor, out var instance))
 			return Results.NotFound();
 
 		JsonElement? json = null;
@@ -25,7 +25,12 @@ internal static class SvelteRemoteEndpoints
 			}
 		}
 
-		return await Run(descriptor, instance, new RemoteArguments { Json = json, CancellationToken = context.RequestAborted });
+		return await Run(descriptor, instance, new RemoteArguments
+		{
+			Json = json,
+			CancellationToken = context.RequestAborted,
+			Validation = BuildValidation(context.RequestServices, serviceType, descriptor)
+		});
 	}
 
 	public static async Task<IResult> HandlePost(string service, string method, HttpContext context)
@@ -34,7 +39,7 @@ internal static class SvelteRemoteEndpoints
 
 		if (context.Request.HasFormContentType)
 		{
-			if (!TryResolve(context, service, method, RemoteKind.Form, out var descriptor, out var instance))
+			if (!TryResolve(context, service, method, RemoteKind.Form, out var serviceType, out var descriptor, out var instance))
 				return Results.NotFound();
 
 			// Plain form posts can't set custom headers — require same-origin instead.
@@ -46,7 +51,8 @@ internal static class SvelteRemoteEndpoints
 			{
 				Form = form.ToDictionary(kv => kv.Key, kv => kv.Value.ToString()),
 				ValidateOnly = context.Request.Headers.ContainsKey("X-SvelteNet-Validate"),
-				CancellationToken = context.RequestAborted
+				CancellationToken = context.RequestAborted,
+				Validation = BuildValidation(context.RequestServices, serviceType, descriptor)
 			};
 
 			// Without JS the browser posted directly — run the mutation, then send it back.
@@ -62,14 +68,19 @@ internal static class SvelteRemoteEndpoints
 		if (!enhanced)
 			return Results.Problem(detail: "Missing X-SvelteNet header.", statusCode: StatusCodes.Status400BadRequest);
 
-		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandDescriptor, out var commandInstance))
+		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandServiceType, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
 
 		JsonElement? body = null;
 		if (context.Request.ContentLength is > 0)
 			body = (await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)).RootElement;
 
-		return await Run(commandDescriptor, commandInstance, new RemoteArguments { Json = body, CancellationToken = context.RequestAborted });
+		return await Run(commandDescriptor, commandInstance, new RemoteArguments
+		{
+			Json = body,
+			CancellationToken = context.RequestAborted,
+			Validation = BuildValidation(context.RequestServices, commandServiceType, commandDescriptor)
+		});
 	}
 
 	private static async Task<IResult> Run(RemoteMethodDescriptor descriptor, object instance, RemoteArguments args)
@@ -96,15 +107,32 @@ internal static class SvelteRemoteEndpoints
 		return result is null ? Results.NoContent() : Results.Json(result, SvelteJson.Options);
 	}
 
-	private static bool TryResolve(HttpContext context, string service, string method, RemoteKind kind, out RemoteMethodDescriptor descriptor, out object instance)
+	private static bool TryResolve(HttpContext context, string service, string method, RemoteKind kind, out Type serviceType, out RemoteMethodDescriptor descriptor, out object instance)
 	{
+		serviceType = null!;
 		descriptor = null!;
 		instance = null!;
 		var registry = context.RequestServices.GetRequiredService<SvelteRemoteRegistry>();
 		if (!registry.TryGet(service, method, out var serviceDescriptor, out descriptor!) || descriptor.Kind != kind)
 			return false;
+		serviceType = serviceDescriptor.ServiceType;
 		instance = context.RequestServices.GetRequiredService(serviceDescriptor.ServiceType);
 		return true;
+	}
+
+	/// <summary>
+	/// Composes the registered ISvelteRemoteValidators into the pipeline dispatchers
+	/// await between binding and invocation. Null when none are registered.
+	/// </summary>
+	internal static Func<RemoteArguments, ValueTask>? BuildValidation(IServiceProvider services, Type serviceType, RemoteMethodDescriptor method)
+	{
+		var validators = services.GetServices<ISvelteRemoteValidator>().ToArray();
+		if (validators.Length == 0) return null;
+		return async args =>
+		{
+			var context = new RemoteValidationContext(serviceType, method, args);
+			foreach (var validator in validators) await validator.ValidateAsync(context);
+		};
 	}
 
 	private static bool IsSameOrigin(HttpContext context)

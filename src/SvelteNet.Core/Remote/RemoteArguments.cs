@@ -17,9 +17,23 @@ public sealed class RemoteArguments
 	public bool ValidateOnly { get; init; }
 	public CancellationToken CancellationToken { get; init; }
 
+	/// <summary>
+	/// Validation pipeline installed by the host (the registered ISvelteRemoteValidators).
+	/// Dispatchers — generated and reflection alike — await ValidateBoundAsync() between
+	/// binding and invocation, so validators see every bound value and can veto the call.
+	/// </summary>
+	public Func<RemoteArguments, ValueTask>? Validation { get; init; }
+
+	/// <summary>Values bound so far, keyed by camelCase parameter name.</summary>
+	public Dictionary<string, object?> Bound { get; } = new();
+
 	public Dictionary<string, List<string>>? Errors { get; private set; }
 
 	public bool CanInvoke => Errors is null && !ValidateOnly;
+
+	public bool HasError(string field) => Errors?.ContainsKey(field) == true;
+
+	public ValueTask ValidateBoundAsync() => Validation?.Invoke(this) ?? ValueTask.CompletedTask;
 
 	public void AddError(string field, string message)
 	{
@@ -37,10 +51,10 @@ public sealed class RemoteArguments
 		try
 		{
 			if (Form is not null && Form.TryGetValue(name, out var formValue))
-				return ConvertFormValue(formValue, type);
+				return Bound[name] = ConvertFormValue(formValue, type);
 
 			if (Json?.ValueKind == JsonValueKind.Object && Json.Value.TryGetProperty(name, out var element))
-				return element.Deserialize(type, SvelteJson.Options);
+				return Bound[name] = element.Deserialize(type, SvelteJson.Options);
 		}
 		catch (Exception e) when (e is JsonException or FormatException or ArgumentException or OverflowException)
 		{
@@ -49,6 +63,7 @@ public sealed class RemoteArguments
 		}
 
 		if (!hasDefault) AddError(name, $"Missing argument '{name}'.");
+		else Bound[name] = defaultValue;
 		return defaultValue;
 	}
 
