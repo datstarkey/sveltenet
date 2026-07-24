@@ -51,27 +51,31 @@ Semantics mirror SvelteKit: queries are GET, cached, with `current`/`loading`/`e
 [Form] public string Subscribe([EmailAddress] string email) => email;
 ```
 
-An invalid email never reaches the method body; the client shows it on `fields.email.issues()` exactly like any other error. Plug in anything else by registering more validators — e.g. a FluentValidation adapter:
+An invalid email never reaches the method body; the client shows it on `fields.email.issues()` exactly like any other error.
+
+**FluentValidation** plugs in via the `SvelteNet.FluentValidation` package: register the adapter once and your `IValidator<T>`s (resolved from DI per argument type, scoped services welcome) run automatically:
 
 ```csharp
-builder.Services.AddSingleton<ISvelteRemoteValidator, FluentValidationRemoteValidator>();
+builder.Services.AddSvelteNetFluentValidation();
+builder.Services.AddScoped<IValidator<Feedback>, FeedbackValidator>();
 
-public class FluentValidationRemoteValidator(IServiceProvider services) : ISvelteRemoteValidator
+public record Feedback(string Message, int Rating);
+
+public class FeedbackValidator : AbstractValidator<Feedback>
 {
-    public async ValueTask ValidateAsync(RemoteValidationContext context)
+    public FeedbackValidator()
     {
-        foreach (var (name, value) in context.Arguments)
-        {
-            if (value is null || services.GetService(typeof(IValidator<>).MakeGenericType(value.GetType())) is not IValidator validator) continue;
-            var result = await validator.ValidateAsync(new ValidationContext<object>(value), context.CancellationToken);
-            foreach (var failure in result.Errors)
-                context.AddError(JsonNamingPolicy.CamelCase.ConvertName(failure.PropertyName), failure.ErrorMessage);
-        }
+        RuleFor(f => f.Message).NotEmpty().MinimumLength(5);
+        RuleFor(f => f.Rating).InclusiveBetween(1, 5);
     }
 }
+
+[Command] public string SubmitFeedback(Feedback feedback) => $"{feedback.Rating}★ noted";
 ```
 
-The frontend never changes: whichever validator produced the error, it arrives as the same problem details and lights up the same `issues()` / `aria-invalid` / `validate()` machinery. Razor Pages get the equivalent for free through `ModelState` — anything that writes to it (DataAnnotations, FluentValidation auto-validation, manual `AddModelError`) flows into `data.problem`.
+Property names camelCase into the `errors` member (`Address.City` → `address.city`). Anything else implements `ISvelteRemoteValidator` directly and registers the same way.
+
+The frontend never changes: whichever validator produced the error, it arrives as the same problem details and lights up the same `issues()` / `aria-invalid` / `validate()` machinery. Razor Pages get the equivalent for free through `ModelState` — anything that writes to it (DataAnnotations, FluentValidation auto-validation, manual `AddModelError`) flows into `data.problem`. `samples/RemoteFunctions` demonstrates all three: imperative `SvelteValidationException`, DataAnnotations, and FluentValidation.
 
 ## Await expressions (experimental)
 

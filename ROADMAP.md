@@ -4,9 +4,8 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 
 ## Next
 
-- **Publish packages** — `SvelteNet.Core` + `SvelteNet.AspNetCore` to NuGet (bundling `SvelteNet.Generators` as an analyzer and `SvelteNet.Build.targets` in the package `build/` folder so consumers get build-time type generation automatically), and the `sveltenet` package to npm. Includes a versioning/release flow.
+- **Publish packages** — `SvelteNet.Core` + `SvelteNet.AspNetCore` + `SvelteNet.FluentValidation` to NuGet (bundling `SvelteNet.Generators` as an analyzer and `SvelteNet.Build.targets` in the package `build/` folder so consumers get build-time type generation automatically), and the `sveltenet` package to npm. Includes a versioning/release flow.
 - **Test CI** — the docs deploy is the only workflow; PRs (including Dependabot's) should run `dotnet test` + the JS tests + sample vite builds.
-- **FluentValidation adapter package** — the BYOV pipeline (`ISvelteRemoteValidator`) and automatic DataAnnotations have shipped; a first-party `SvelteNet.FluentValidation` package (FluentValidation is still free/Apache 2.0, worth sponsoring) would resolve `IValidator<T>`s automatically instead of the hand-rolled adapter shown in the docs.
 
 ## Later
 
@@ -28,3 +27,4 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 - VitePress docs site deployed to GitHub Pages; Dependabot across actions/bun/NuGet
 - Validation errors as RFC 9457 problem details (`application/problem+json`, ASP.NET `errors` member) across remote functions, the SSR bridge, and enhanced page posts
 - BYOV validation pipeline: `ISvelteRemoteValidator`s run between binding and invocation; DataAnnotations on parameters and complex argument types validate automatically
+- `SvelteNet.FluentValidation`: registered `IValidator<T>`s (FluentValidation, still free/Apache 2.0 — worth sponsoring) run automatically via the BYOV pipeline

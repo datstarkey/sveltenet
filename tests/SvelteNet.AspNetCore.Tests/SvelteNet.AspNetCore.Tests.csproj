@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SvelteNet.AspNetCore\SvelteNet.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\SvelteNet.FluentValidation\SvelteNet.FluentValidation.csproj" />
     <ProjectReference Include="..\..\samples\TodoApp\TodoApp.csproj" />
     <ProjectReference Include="..\..\samples\RemoteFunctions\RemoteFunctions.csproj" />
     <ProjectReference Include="..\..\samples\MvcHello\MvcHello.csproj" />

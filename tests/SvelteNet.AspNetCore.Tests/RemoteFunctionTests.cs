@@ -53,7 +53,7 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 
 		var descriptor = Assert.Single(registry.Services, s => s.Name == "TodoApi");
 		Assert.True(descriptor.IsGenerated);
-		Assert.Equal(5, descriptor.Methods.Length);
+		Assert.Equal(6, descriptor.Methods.Length);
 	}
 
 	[Fact]
@@ -140,6 +140,26 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 
 		var valid = await ReadJson(await client.SendAsync(Form("TodoApi/Subscribe", new() { ["email"] = "a@b.com" })));
 		Assert.Equal("a@b.com", valid.GetString());
+	}
+
+	[Fact]
+	public async Task Fluent_validation_runs_automatically_for_commands()
+	{
+		var client = _factory.CreateClient();
+
+		// FeedbackValidator (FluentValidation, registered in the sample's Program)
+		// rejects before SubmitFeedback executes — same problem-details shape.
+		var invalid = await client.SendAsync(Command("TodoApi/SubmitFeedback",
+			new { feedback = new { message = "", rating = 9 } }));
+		Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+		Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+		var problem = JsonDocument.Parse(await invalid.Content.ReadAsStringAsync()).RootElement;
+		Assert.True(problem.GetProperty("errors").TryGetProperty("message", out _));
+		Assert.Equal("Rating must be between 1 and 5.", problem.GetProperty("errors").GetProperty("rating")[0].GetString());
+
+		var valid = await ReadJson(await client.SendAsync(Command("TodoApi/SubmitFeedback",
+			new { feedback = new { message = "loving the islands", rating = 5 } })));
+		Assert.Equal("5★ noted", valid.GetString());
 	}
 
 	[Fact]

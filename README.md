@@ -52,6 +52,7 @@ src/       SvelteNet.Core          — renderer, Jint SSR engine, TypeScript gen
            SvelteNet.AspNetCore    — SveltePage, @Html.Svelte, remote endpoints, scaffolder (NuGet)
            SvelteNet.Generators    — Roslyn source generator for remote dispatch
            SvelteNet.Build         — MSBuild target: dotnet build generates the TS types
+           SvelteNet.FluentValidation — FluentValidation adapter for the validation pipeline
 packages/  sveltenet               — Vite plugin + client/remote runtimes (npm)
 samples/   TodoApp                 — Razor Pages: typed props, forms, enhance()
            RemoteFunctions         — query/command/form remote functions, async SSR

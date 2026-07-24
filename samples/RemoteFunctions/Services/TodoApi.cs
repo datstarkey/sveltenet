@@ -45,4 +45,9 @@ public class TodoApi(TodoStore store)
 	// checks; an invalid email never reaches the method body.
 	[Form]
 	public string Subscribe([EmailAddress] string email) => email;
+
+	// FluentValidation: FeedbackValidator (registered in Program.cs) runs before
+	// this executes — same pipeline, same problem-details errors on the client.
+	[Command]
+	public string SubmitFeedback(Feedback feedback) => $"{feedback.Rating}★ noted";
 }

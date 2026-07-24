@@ -1,10 +1,26 @@
 <script lang="ts">
 	import { clientPending } from 'sveltenet/remote';
-	import { createTodo, getStats, getTodos, subscribe, toggleTodo } from './remote';
+	import { createTodo, getStats, getTodos, submitFeedback, subscribe, toggleTodo } from './remote';
 
 	// Queries are cached and deduped: getTodos() === getTodos().
 	const todos = getTodos();
 	const stats = getStats();
+
+	// FluentValidation demo: commands reject with the same issues shape.
+	let feedbackMessage = $state('');
+	let feedbackRating = $state(5);
+	let feedbackIssues = $state<{ message: string }[]>([]);
+	let feedbackResult = $state('');
+
+	async function sendFeedback() {
+		feedbackIssues = [];
+		try {
+			feedbackResult = await submitFeedback({ message: feedbackMessage, rating: feedbackRating });
+			feedbackMessage = '';
+		} catch (error) {
+			feedbackIssues = Object.values((error as { issues?: Record<string, { message: string }[]> }).issues ?? {}).flat();
+		}
+	}
 </script>
 
 <svelte:head>
@@ -70,6 +86,22 @@
 	{#if subscribe.result}
 		<p>Subscribed {subscribe.result}!</p>
 	{/if}
+
+	<!-- FluentValidation (FeedbackValidator in C#) runs automatically before the
+	     command executes; failures arrive as the same problem-details issues -->
+	<div class="feedback">
+		{#each feedbackIssues as issue}
+			<p class="error">{issue.message}</p>
+		{/each}
+		<input bind:value={feedbackMessage} placeholder="Any feedback?" />
+		<select bind:value={feedbackRating}>
+			{#each [1, 2, 3, 4, 5] as rating (rating)}
+				<option value={rating}>{rating}★</option>
+			{/each}
+		</select>
+		<button onclick={sendFeedback}>Send</button>
+		{#if feedbackResult}<span>{feedbackResult}</span>{/if}
+	</div>
 </main>
 
 <style>
