@@ -1,9 +1,9 @@
 namespace SvelteNet.AspNetCore.Remote;
 
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using SvelteNet.Remote;
-using System.Text.Json;
 
 /// <summary>
 /// The in-process fetch bridge: resolves /_sveltenet/remote query GETs made inside
@@ -38,8 +38,8 @@ internal sealed class RemoteSsrFetchHandler(
 
 		var parts = rest.Split('/');
 		if (parts.Length != 2 ||
-		    !registry.TryGet(parts[0], parts[1], out var service, out var descriptor) ||
-		    descriptor.Kind != RemoteKind.Query)
+			!registry.TryGet(parts[0], parts[1], out var service, out var descriptor) ||
+			descriptor.Kind != RemoteKind.Query)
 			return (404, null);
 
 		var requestServices = httpContextAccessor.HttpContext?.RequestServices;
@@ -50,9 +50,18 @@ internal sealed class RemoteSsrFetchHandler(
 		var args = new RemoteArguments
 		{
 			Json = argsJson is null ? null : JsonDocument.Parse(argsJson).RootElement,
-			Validation = SvelteRemoteEndpoints.BuildValidation(provider, service.ServiceType, descriptor)
+			Validation = SvelteRemoteEndpoints.BuildValidation(provider, service.ServiceType, descriptor),
+			CancellationToken = httpContextAccessor.HttpContext?.RequestAborted ?? default
 		};
-		var result = descriptor.Invoke(instance, args).AsTask().GetAwaiter().GetResult();
+		object? result = null;
+		try
+		{
+			result = descriptor.Invoke(instance, args).AsTask().GetAwaiter().GetResult();
+		}
+		catch (SvelteValidationException invalid)
+		{
+			SvelteRemoteEndpoints.ApplyValidationException(args, invalid);
+		}
 
 		// Same RFC 9457 shape the HTTP endpoints produce, so the client transport
 		// parses SSR-bridged responses identically.

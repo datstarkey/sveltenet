@@ -1,6 +1,4 @@
 <script lang="ts">
-	import type { HelloViewModel } from '../types';
-
 	let { data }: { data: HelloViewModel } = $props();
 
 	let cheers = $state(0);

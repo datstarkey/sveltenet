@@ -5,6 +5,7 @@
         <RootNamespace>SvelteNet.AspNetCore</RootNamespace>
         <Title>SvelteNet.AspNetCore</Title>
         <Description>Svelte 5 islands for ASP.NET Razor Pages and MVC, with typed props</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,6 +18,39 @@
 
     <ItemGroup>
         <ProjectReference Include="..\SvelteNet.Core\SvelteNet.Core.csproj" />
+        <ProjectReference Include="..\SvelteNet.Generators\SvelteNet.Generators.csproj"
+                          ReferenceOutputAssembly="false"
+                          PrivateAssets="all" />
+        <ProjectReference Include="..\SvelteNet.Build\SvelteNet.Build.csproj"
+                          ReferenceOutputAssembly="false"
+                          PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\SvelteNet.Generators\bin\$(Configuration)\netstandard2.0\SvelteNet.Generators.dll"
+              Pack="true"
+              PackagePath="analyzers\dotnet\cs"
+              Visible="false" />
+        <None Include="..\SvelteNet.Build\SvelteNet.Build.targets"
+              Pack="true"
+              PackagePath="build\SvelteNet.AspNetCore.targets"
+              Visible="false" />
+        <None Include="..\..\README.md"
+              Pack="true"
+              PackagePath="\"
+              Visible="false" />
+        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.dll"
+              Pack="true"
+              PackagePath="tools\net10.0\any"
+              Visible="false" />
+        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.deps.json"
+              Pack="true"
+              PackagePath="tools\net10.0\any"
+              Visible="false" />
+        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.runtimeconfig.json"
+              Pack="true"
+              PackagePath="tools\net10.0\any"
+              Visible="false" />
     </ItemGroup>
 
 </Project>

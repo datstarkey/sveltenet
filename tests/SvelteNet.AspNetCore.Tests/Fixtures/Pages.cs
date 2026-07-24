@@ -35,6 +35,12 @@ namespace SvelteNet.AspNetCore.Tests.Fixtures
 		[Command] public void Clear() { }
 		[Form] public Task<int> Save(Widget widget) => Task.FromResult(0);
 	}
+
+	[SvelteRemote]
+	public class CatalogApi
+	{
+		[Query] public List<Widget> Search(string term) => [];
+	}
 }
 
 namespace SvelteNet.AspNetCore.Tests.Fixtures.Pages
@@ -55,5 +61,14 @@ namespace SvelteNet.AspNetCore.Tests.Fixtures.Pages.Admin
 	public class UsersModel : SveltePage
 	{
 		[SvelteProp] public Paged<Widget> Users { get; set; } = new();
+	}
+}
+
+namespace SvelteNet.AspNetCore.Tests.Fixtures.Features.Inventory
+{
+	[SvelteRemote]
+	public class InventoryApi
+	{
+		[Query] public int GetStock() => 3;
 	}
 }

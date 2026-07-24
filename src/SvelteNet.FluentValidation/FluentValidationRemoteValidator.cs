@@ -1,5 +1,6 @@
 namespace SvelteNet.FluentValidation;
 
+using System.Collections.Concurrent;
 using global::FluentValidation;
 using SvelteNet.Remote;
 using SvelteNet.TypeGen;
@@ -13,13 +14,17 @@ using SvelteNet.TypeGen;
 /// </summary>
 public sealed class FluentValidationRemoteValidator(IServiceProvider services) : ISvelteRemoteValidator
 {
+	private static readonly ConcurrentDictionary<Type, Type> LegacyValidatorTypes = new();
+
 	public async ValueTask ValidateAsync(RemoteValidationContext context)
 	{
 		foreach (var (name, value) in context.Arguments)
 		{
 			if (value is null || context.HasError(name)) continue;
 
-			var validatorType = typeof(IValidator<>).MakeGenericType(value.GetType());
+			var parameter = context.Method.Parameters.FirstOrDefault(p => p.Name == name);
+			var validatorType = parameter?.FluentValidatorServiceType ??
+								LegacyValidatorTypes.GetOrAdd(value.GetType(), static type => typeof(IValidator<>).MakeGenericType(type));
 			if (services.GetService(validatorType) is not IValidator validator) continue;
 
 			var result = await validator.ValidateAsync(

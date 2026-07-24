@@ -11,7 +11,7 @@ public class JintSsrEngineTests : IDisposable
 
 	public JintSsrEngineTests()
 	{
-		var serverDir = Path.Combine(_root, "svelte-ssr");
+		var serverDir = Path.Combine(_root, ".svelte-net", "server");
 		Directory.CreateDirectory(serverDir);
 
 		File.WriteAllText(Path.Combine(serverDir, "render.js"), """
@@ -70,7 +70,7 @@ public class JintSsrEngineTests : IDisposable
 	[Fact]
 	public void The_fetch_bridge_resolves_awaits_during_ssr()
 	{
-		File.WriteAllText(Path.Combine(_root, "svelte-ssr", "Async.js"), """
+		File.WriteAllText(Path.Combine(_root, ".svelte-net", "server", "Async.js"), """
 		export default async (props) => {
 			const response = await fetch('/_sveltenet/remote/Api/GetThing');
 			const data = await response.json();
@@ -94,5 +94,20 @@ public class JintSsrEngineTests : IDisposable
 			var result = _engine.Render("Index.js", "render.js", $"{{\"data\":{{\"title\":\"run-{i}\"}}}}");
 			Assert.Equal($"<p>run-{i}</p>", result.Body);
 		});
+	}
+
+	[Fact]
+	public void Runaway_ssr_is_stopped_by_the_configured_timeout()
+	{
+		File.WriteAllText(Path.Combine(_root, ".svelte-net", "server", "Loop.js"), """
+		export default () => {
+			while (true) {}
+		};
+		""");
+		var engine = new JintSsrEngine(
+			new SvelteOptions { ContentRoot = _root },
+			ssrOptions: new JintSsrOptions { Timeout = TimeSpan.FromMilliseconds(50) });
+
+		Assert.ThrowsAny<Exception>(() => engine.Render("Loop.js", "render.js", null));
 	}
 }

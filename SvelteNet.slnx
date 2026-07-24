@@ -14,5 +14,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/SvelteNet.AspNetCore.Tests/SvelteNet.AspNetCore.Tests.csproj" />
     <Project Path="tests/SvelteNet.Core.Tests/SvelteNet.Core.Tests.csproj" />
+    <Project Path="tests/SvelteNet.Generators.Tests/SvelteNet.Generators.Tests.csproj" />
   </Folder>
 </Solution>

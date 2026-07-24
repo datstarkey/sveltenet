@@ -1,8 +1,7 @@
 namespace RemoteFunctions;
 
 using FluentValidation;
-using RemoteFunctions.Models;
-using RemoteFunctions.Services;
+using RemoteFunctions.Features.Todos;
 using SvelteNet.AspNetCore;
 using SvelteNet.FluentValidation;
 
@@ -17,7 +16,9 @@ public class Program
 
 		builder.Services.AddRazorPages();
 		builder.Services.AddSingleton<TodoStore>();
-		builder.Services.AddSvelteNet();
+		builder.Services
+			.AddSvelteNet(options => options.PagesPath = "Features")
+			.AddJintSSR();
 
 		// FluentValidation plugs into the remote-function validation pipeline;
 		// registered IValidator<T>s run automatically before dispatch.

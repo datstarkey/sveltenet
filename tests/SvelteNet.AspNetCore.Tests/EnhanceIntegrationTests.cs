@@ -1,7 +1,7 @@
 namespace SvelteNet.AspNetCore.Tests;
 
-using Microsoft.AspNetCore.Mvc.Testing;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 
 /// <summary>
 /// Full-stack tests of the enhance() HTTP protocol against the real TodoApp sample:

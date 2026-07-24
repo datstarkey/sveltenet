@@ -1,6 +1,6 @@
 # MVC / arbitrary views
 
-Put `[SvelteComponent]` on the view model and the component is resolved from the type — no strings in views, the model's TypeScript interface lands in `types.ts`, and the component file is scaffolded on the next dev run:
+Put `[SvelteComponent]` on the view model and the component is resolved from the type — no strings in views, the model's ambient TypeScript interface lands in `.svelte-net/types/models.d.ts`, and the component file is scaffolded on the next build:
 
 ```csharp
 [SvelteComponent]                       // → "Components/Cart" (type name minus ViewModel/Model/Dto)
@@ -18,8 +18,6 @@ public record SpecialViewModel(...);
 
 ```svelte
 <script lang="ts">
-    import type { CartViewModel } from '../types';
-
     let { data }: { data: CartViewModel } = $props();
 </script>
 ```

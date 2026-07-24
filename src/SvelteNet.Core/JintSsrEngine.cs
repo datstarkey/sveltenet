@@ -1,9 +1,9 @@
 namespace SvelteNet;
 
+using System.Collections.Concurrent;
 using Jint;
 using Jint.Native;
 using Jint.Native.Json;
-using System.Collections.Concurrent;
 
 /// <summary>
 /// Runs the Svelte SSR bundle with Jint — a pure .NET JavaScript engine, so no Node.js
@@ -14,16 +14,21 @@ using System.Collections.Concurrent;
 public class JintSsrEngine : ISvelteSsrEngine
 {
 	private readonly SvelteOptions _options;
+	private readonly JintSsrOptions _ssrOptions;
 	private readonly ISvelteSsrFetchHandler? _fetchHandler;
 	private readonly ConcurrentBag<Engine> _pool = new();
 
-	public JintSsrEngine(SvelteOptions options, ISvelteSsrFetchHandler? fetchHandler = null)
+	public JintSsrEngine(
+		SvelteOptions options,
+		ISvelteSsrFetchHandler? fetchHandler = null,
+		JintSsrOptions? ssrOptions = null)
 	{
 		_options = options;
 		_fetchHandler = fetchHandler;
+		_ssrOptions = ssrOptions ?? new JintSsrOptions();
 	}
 
-	public SsrResult Render(string componentModule, string renderModule, string? propsJson)
+	public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default)
 	{
 		if (!_pool.TryTake(out var engine)) engine = CreateEngine();
 
@@ -36,15 +41,15 @@ public class JintSsrEngine : ISvelteSsrEngine
 		// Drain pending continuations (e.g. Svelte lazily imports node:async_hooks and
 		// installs AsyncLocalStorage in a .then) so async-context tracking — which
 		// hydratable depends on — is in place before rendering starts.
-		engine.Evaluate("Promise.resolve()").UnwrapIfPromise();
+		engine.Evaluate("Promise.resolve()").UnwrapIfPromise(cancellationToken);
 		var props = propsJson is null ? JsValue.Undefined : new JsonParser(engine).Parse(propsJson);
 
 		// renderComponent is async — await-expression trees resolve through the fetch bridge.
-		var result = engine.Invoke(renderFn, component, props).UnwrapIfPromise().AsObject();
+		var result = engine.Invoke(renderFn, component, props).UnwrapIfPromise(cancellationToken).AsObject();
 		var head = result.Get("head");
 		var body = result.Get("body");
 
-		_pool.Add(engine);
+		if (_pool.Count < _ssrOptions.MaxPooledEngines) _pool.Add(engine);
 		return new SsrResult
 		{
 			Head = head.IsUndefined() ? string.Empty : head.ToString(),
@@ -55,7 +60,9 @@ public class JintSsrEngine : ISvelteSsrEngine
 	private Engine CreateEngine()
 	{
 		var serverDir = Path.Combine(_options.ContentRoot, _options.ServerOutput);
-		var engine = new Engine(o => o.EnableModules(new SsrModuleLoader(serverDir)));
+		var engine = new Engine(o => o
+			.EnableModules(new SsrModuleLoader(serverDir))
+			.TimeoutInterval(_ssrOptions.Timeout));
 		engine.SetValue("console", new ConsoleWrapper());
 
 		if (_fetchHandler is not null)

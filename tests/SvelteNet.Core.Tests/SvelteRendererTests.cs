@@ -15,7 +15,7 @@ public class SvelteRendererTests : IDisposable
 		public int Calls;
 		public (string Component, string Render, string? Props)? LastCall;
 
-		public SsrResult Render(string componentModule, string renderModule, string? propsJson)
+		public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default)
 		{
 			Calls++;
 			LastCall = (componentModule, renderModule, propsJson);
@@ -29,7 +29,7 @@ public class SvelteRendererTests : IDisposable
 		Directory.CreateDirectory(dir);
 		File.WriteAllText(Path.Combine(dir, "manifest.json"), """
 		{
-			"Svelte/mount.ts": { "file": "assets/mount-abc.js", "isEntry": true },
+			"../../packages/sveltenet/src/client.js": { "file": "assets/mount-abc.js", "name": "sveltenet-client", "isEntry": true },
 			"Svelte/Index.svelte": {
 				"file": "assets/Index-abc.js",
 				"isEntry": true,
@@ -44,11 +44,11 @@ public class SvelteRendererTests : IDisposable
 
 	private void WriteServerManifest()
 	{
-		var dir = Path.Combine(_root, "svelte-ssr", ".vite");
+		var dir = Path.Combine(_root, ".svelte-net", "server", ".vite");
 		Directory.CreateDirectory(dir);
 		File.WriteAllText(Path.Combine(dir, "manifest.json"), """
 		{
-			"Svelte/render.ts": { "file": "render.js", "isEntry": true },
+			"../../packages/sveltenet/src/server.js": { "file": "render.js", "name": "sveltenet-ssr", "isEntry": true },
 			"Svelte/Index.svelte": { "file": "Index.js", "isEntry": true },
 			"Svelte/Admin/Users.svelte": { "file": "Users.js", "isEntry": true }
 		}
@@ -64,7 +64,7 @@ public class SvelteRendererTests : IDisposable
 		var result = renderer.Render("Index", new { Title = "hi" });
 
 		Assert.Contains("http://localhost:5173/@vite/client", result.Html);
-		Assert.Contains("http://localhost:5173/Svelte/mount.ts", result.Html);
+		Assert.Contains("http://localhost:5173/@id/sveltenet/client", result.Html);
 		Assert.Contains("http://localhost:5173/Svelte/Index.svelte", result.Html);
 		Assert.Contains("hydrate: false", result.Html);
 		Assert.Contains("<div id=\"svelte-index\"></div>", result.Html);
@@ -89,6 +89,19 @@ public class SvelteRendererTests : IDisposable
 		Assert.Equal(1, engine.Calls);
 		Assert.Equal(("Index.js", "render.js", "{\"data\":{\"title\":\"hi\"}}"), engine.LastCall);
 		Assert.Contains("<title>ssr-head</title>", result.Head);
+	}
+
+	[Fact]
+	public void Prod_mode_is_client_only_when_no_ssr_engine_is_registered()
+	{
+		WriteClientManifest();
+		var renderer = new SvelteRenderer(Options());
+
+		var result = renderer.Render("Index", new { Title = "hi" });
+
+		Assert.Contains("hydrate: false", result.Html);
+		Assert.Contains("<div id=\"svelte-index\"></div>", result.Html);
+		Assert.DoesNotContain("ssr-head", result.Head);
 	}
 
 	[Fact]
@@ -140,6 +153,22 @@ public class SvelteRendererTests : IDisposable
 		var result = renderer.Render(new ComponentOptions { Component = "Admin/Users", Ssr = false });
 
 		Assert.Contains("<div id=\"svelte-admin-users\">", result.Html);
+	}
+
+	[Fact]
+	public void Element_ids_are_encoded_for_html_and_javascript_contexts()
+	{
+		var renderer = new SvelteRenderer(Options(isDev: true), new FakeSsrEngine());
+
+		var result = renderer.Render(new ComponentOptions
+		{
+			Component = "Index",
+			ElementId = "\"><script>alert(1)</script>"
+		});
+
+		Assert.Contains("id=\"&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;\"", result.Html);
+		Assert.Contains("document.getElementById(\"\\u0022\\u003E\\u003Cscript\\u003Ealert(1)\\u003C/script\\u003E\")", result.Html);
+		Assert.DoesNotContain("<script>alert(1)</script>", result.Html);
 	}
 
 	[Fact]

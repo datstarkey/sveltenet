@@ -5,7 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddSingleton<TodoStore>();
-builder.Services.AddSvelteNet();
+builder.Services.AddSvelteNet().AddJintSSR();
 
 var app = builder.Build();
 

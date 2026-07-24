@@ -6,7 +6,7 @@ using SvelteNet;
 // [SvelteComponent] binds this model to Svelte/Components/Hello.svelte
 // (convention: "Components/" + type name minus the ViewModel suffix), so views
 // render it with @Html.Svelte(Model) — no component string, and the model's
-// TypeScript interface is generated into Svelte/types.ts.
+// TypeScript interface is generated into .svelte-net/types/models.d.ts.
 [SvelteComponent]
 public record HelloViewModel(string Name, int Visits);
 

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: SvelteNet
   text: Svelte 5 islands for ASP.NET
-  tagline: Typed props from C#, SvelteKit-style forms and remote functions, Jint-based SSR — no Node.js at runtime.
+  tagline: Typed props from C#, SvelteKit-style forms and remote functions, with optional Jint, Node.js, Bun, or custom SSR.
   actions:
     - theme: brand
       text: Get started
@@ -23,8 +23,8 @@ features:
     details: Razor Pages form posts progressively enhanced with enhance() — no reload, fresh JSON props, model-state validation included.
   - title: Remote functions
     details: "[Query], [Command], and [Form] methods on C# services become a typed client — queries await in components, commands refresh them, forms spread onto <form>."
-  - title: SSR without Node
-    details: Jint runs the Svelte server bundle in-process. Awaited queries resolve through an in-process fetch bridge and hydrate with zero refetches.
+  - title: SSR on your terms
+    details: Stay client-only, run the server bundle in-process with Jint, use Node.js or Bun from PATH, or register a custom renderer.
   - title: One Vite build
     details: A single vite build produces the client and SSR bundles via the Vite Environments API, with HMR in dev.
   - title: Source-generated dispatch

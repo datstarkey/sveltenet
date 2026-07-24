@@ -1,7 +1,7 @@
 namespace SvelteNet.Remote;
 
-using SvelteNet.TypeGen;
 using System.Text.Json;
+using SvelteNet.TypeGen;
 
 /// <summary>
 /// Argument source for a remote call: JSON (query/command) or form fields ([Form]).
@@ -13,7 +13,7 @@ using System.Text.Json;
 public sealed class RemoteArguments
 {
 	public JsonElement? Json { get; init; }
-	public IReadOnlyDictionary<string, string>? Form { get; init; }
+	public IReadOnlyDictionary<string, IReadOnlyList<string>>? Form { get; init; }
 	public bool ValidateOnly { get; init; }
 	public CancellationToken CancellationToken { get; init; }
 
@@ -62,17 +62,61 @@ public sealed class RemoteArguments
 			return defaultValue;
 		}
 
-		if (!hasDefault) AddError(name, $"Missing argument '{name}'.");
-		else Bound[name] = defaultValue;
+		if (hasDefault) return Bound[name] = defaultValue;
+		if (Form is not null && (Nullable.GetUnderlyingType(type) ?? type) == typeof(bool))
+			return Bound[name] = false;
+		AddError(name, $"Missing argument '{name}'.");
 		return defaultValue;
 	}
 
 	/// <summary>Form fields arrive as strings; convert to the parameter's type.</summary>
-	private static object? ConvertFormValue(string value, Type type)
+	private static object? ConvertFormValue(IReadOnlyList<string> values, Type type)
+	{
+		var target = Nullable.GetUnderlyingType(type) ?? type;
+		if (target.IsArray)
+			return ConvertCollection(values, target, target.GetElementType()!);
+
+		var collection = target.IsGenericType
+			? target.GetInterfaces()
+				.Append(target)
+				.FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() is
+					var definition && (definition == typeof(IEnumerable<>) ||
+									   definition == typeof(ICollection<>) ||
+									   definition == typeof(IReadOnlyCollection<>) ||
+									   definition == typeof(IReadOnlyList<>) ||
+									   definition == typeof(IList<>) ||
+									   definition == typeof(List<>)))
+			: null;
+		if (collection is not null)
+			return ConvertCollection(values, target, collection.GetGenericArguments()[0]);
+
+		if (values.Count != 1)
+			throw new FormatException("A scalar form argument must have exactly one value.");
+		return ConvertScalar(values[0], target);
+	}
+
+	private static object ConvertCollection(IReadOnlyList<string> values, Type targetType, Type elementType)
+	{
+		var array = Array.CreateInstance(elementType, values.Count);
+		for (var i = 0; i < values.Count; i++) array.SetValue(ConvertScalar(values[i], elementType), i);
+		if (targetType.IsAssignableFrom(array.GetType())) return array;
+
+		var json = JsonSerializer.Serialize(array, array.GetType(), SvelteJson.Options);
+		return JsonSerializer.Deserialize(json, targetType, SvelteJson.Options)
+			   ?? throw new FormatException($"Unable to bind form values to '{targetType.Name}'.");
+	}
+
+	private static object? ConvertScalar(string value, Type type)
 	{
 		type = Nullable.GetUnderlyingType(type) ?? type;
 		if (type == typeof(string)) return value;
-		if (type == typeof(bool)) return value is "on" or "true" or "True";
+		if (type == typeof(bool))
+			return value.ToLowerInvariant() switch
+			{
+				"on" or "true" or "1" => true,
+				"off" or "false" or "0" => false,
+				_ => throw new FormatException("Invalid boolean form value.")
+			};
 		if (type.IsEnum) return Enum.Parse(type, value, ignoreCase: true);
 
 		try

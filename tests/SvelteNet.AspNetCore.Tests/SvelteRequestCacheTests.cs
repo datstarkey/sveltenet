@@ -7,7 +7,7 @@ public class SvelteRequestCacheTests
 {
 	private sealed class NoopSsrEngine : ISvelteSsrEngine
 	{
-		public SsrResult Render(string componentModule, string renderModule, string? propsJson) => new();
+		public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default) => new();
 	}
 
 	private static HttpContext CreateHttpContext()

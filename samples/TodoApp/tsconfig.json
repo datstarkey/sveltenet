@@ -1,0 +1,22 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "es2022"
+	},
+	"include": [
+		"Svelte/**/*.js",
+		"Svelte/**/*.ts",
+		"Svelte/**/*.svelte",
+		".svelte-net/**/*.d.ts",
+		"vite.config.ts"
+	]
+}

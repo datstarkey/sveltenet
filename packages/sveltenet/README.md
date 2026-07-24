@@ -2,7 +2,9 @@
 
 Vite plugin and runtime helpers for [SvelteNet](https://github.com/datstarkey/sveltenet) — Svelte 5 islands for ASP.NET Razor Pages and MVC.
 
-This package is the JS half of SvelteNet; the .NET half is the `SvelteNet.AspNetCore` NuGet package, which renders pages, passes typed props, and (in dev) scaffolds your Svelte files.
+This package is the JS half of SvelteNet; the .NET half is the
+`SvelteNet.AspNetCore` NuGet package, which renders pages, passes typed props, and
+generates declarations/scaffolds missing files during `dotnet build`.
 
 ## Usage
 
@@ -16,7 +18,7 @@ export default defineConfig({
 });
 ```
 
-The plugin configures everything the .NET renderer expects: client build to `wwwroot/client`, SSR build to `svelte-ssr`, manifests, stable entry keys, preserved entry exports, and a fully bundled SSR output (no node_modules needed at runtime).
+The plugin configures everything the .NET renderer expects: client build to `wwwroot/client`, SSR build to `.svelte-net/server`, manifests, stable entry keys, preserved entry exports, and a fully bundled SSR output (no node_modules needed at runtime).
 
 It uses Vite's Environments API with a builder hook (the same mechanism SvelteKit uses), so one command builds both bundles:
 
@@ -29,12 +31,17 @@ vite                 # dev server with HMR
 
 ```ts
 sveltenet({
-	pagesPath: 'Svelte',            // must match SvelteOptions.PagesPath
+	include: ['**/*.svelte'],       // default: project-wide discovery
+	exclude: ['Legacy/**'],         // added to the safe framework/build exclusions
 	clientOutDir: 'wwwroot/client', // must match SvelteOptions.ClientOutput
-	serverOutDir: 'svelte-ssr',     // must match SvelteOptions.ServerOutput
+	serverOutDir: '.svelte-net/server', // must match SvelteOptions.ServerOutput
 	svelte: { /* forwarded to @sveltejs/vite-plugin-svelte */ },
 })
 ```
+
+`pagesPath` remains available as a legacy single-root filter. New projects can omit it:
+components may live under `Svelte/`, beside Razor/MVC files, or inside vertical feature
+slices.
 
 ### Runtime entry points
 
@@ -53,9 +60,12 @@ sveltenet({
 
 Enhanced submits go over `fetch` with an `X-SvelteNet` header; the .NET side responds with fresh JSON data (following post/redirect/get automatically) and `onUpdate` applies it to the island — no page reload. Without JS the form posts normally.
 
-- `sveltenet/server` — `renderComponent(component, props)`, executed inside the .NET host's SSR engine.
+- `sveltenet/server` — `renderComponent(component, props)`, executed only when the
+  .NET application opts into Jint, Node.js, Bun, or a custom SSR engine.
 
-Your app's `Svelte/mount.ts` and `Svelte/render.ts` are one-line re-exports of these (scaffolded for you) — they exist only so the Vite manifest has stable in-project keys.
+The Vite plugin owns stable named entries for both runtimes; applications do not need
+`mount.ts` or `render.ts` shims. Package source lives in `src/`, with its Node/browser
+tests isolated under `test/`.
 
 ## Requirements
 

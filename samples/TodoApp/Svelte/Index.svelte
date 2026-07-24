@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { enhance } from 'sveltenet/client';
-	import type { IndexData } from './Index.types';
 
 	let { data: serverData }: { data: IndexData } = $props();
 

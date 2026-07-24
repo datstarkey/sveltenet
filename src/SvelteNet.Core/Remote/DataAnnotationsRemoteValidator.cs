@@ -1,9 +1,7 @@
 namespace SvelteNet.Remote;
 
-using SvelteNet.TypeGen;
-using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
-using System.Reflection;
+using SvelteNet.TypeGen;
 
 /// <summary>
 /// Default validator: DataAnnotations attributes on remote-function parameters
@@ -14,41 +12,33 @@ using System.Reflection;
 /// </summary>
 public sealed class DataAnnotationsRemoteValidator : ISvelteRemoteValidator
 {
-	private static readonly ConcurrentDictionary<(Type Service, string Method), ParameterInfo[]> Parameters = new();
-
 	public ValueTask ValidateAsync(RemoteValidationContext context)
 	{
-		var parameters = Parameters.GetOrAdd((context.ServiceType, context.Method.Name), static key =>
-			key.Service
-				.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-				.FirstOrDefault(m => m.Name == key.Method)?
-				.GetParameters() ?? []);
-
-		foreach (var parameter in parameters)
+		foreach (var parameter in context.Method.Parameters)
 		{
-			var name = parameter.Name!.ToCamelCase();
+			var name = parameter.Name;
 			// A field that already failed binding gets no second opinion.
 			if (context.HasError(name) || !context.Arguments.TryGetValue(name, out var value)) continue;
 
-			ValidateParameterAttributes(context, parameter, name, value);
+			ValidateParameterAttributes(context, parameter, value);
 			ValidateObjectGraph(context, value);
 		}
 
 		return ValueTask.CompletedTask;
 	}
 
-	private static void ValidateParameterAttributes(RemoteValidationContext context, ParameterInfo parameter, string name, object? value)
+	private static void ValidateParameterAttributes(RemoteValidationContext context, RemoteParameter parameter, object? value)
 	{
-		foreach (var attribute in parameter.GetCustomAttributes<ValidationAttribute>(inherit: false))
+		foreach (var attribute in parameter.ValidationAttributes ?? [])
 		{
 			var validationContext = new ValidationContext(new object())
 			{
 				MemberName = parameter.Name,
-				DisplayName = parameter.Name!
+				DisplayName = parameter.Name
 			};
 			var result = attribute.GetValidationResult(value, validationContext);
 			if (result is not null && result != ValidationResult.Success)
-				context.AddError(name, result.ErrorMessage ?? $"Invalid value for '{name}'.");
+				context.AddError(parameter.Name, result.ErrorMessage ?? $"Invalid value for '{parameter.Name}'.");
 		}
 	}
 
