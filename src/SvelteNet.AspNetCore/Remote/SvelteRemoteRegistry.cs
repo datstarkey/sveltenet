@@ -12,7 +12,16 @@ public sealed class SvelteRemoteRegistry
 
 	public SvelteRemoteRegistry(IEnumerable<RemoteServiceDescriptor> descriptors)
 	{
-		_services = descriptors.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
+		var materialized = descriptors.ToArray();
+		var duplicate = materialized
+			.GroupBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+			.FirstOrDefault(g => g.Count() > 1);
+		if (duplicate is not null)
+			throw new InvalidOperationException(
+				$"Remote service route '{duplicate.Key}' is used by multiple CLR types: " +
+				string.Join(", ", duplicate.Select(d => d.ServiceType.FullName)) +
+				". Rename one of the service classes so route names are unique.");
+		_services = materialized.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
 	}
 
 	public SvelteRemoteRegistry(IEnumerable<Type> serviceTypes)

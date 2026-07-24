@@ -9,5 +9,8 @@
     "docs:dev": "bun run --cwd docs dev",
     "docs:build": "bun run --cwd docs build",
     "docs:preview": "bun run --cwd docs preview"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }

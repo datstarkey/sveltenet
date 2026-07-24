@@ -24,7 +24,13 @@ public class SvelteOptions
 	/// </summary>
 	public string PagesPath { get; set; } = "Svelte";
 
+	/// <summary>
+	/// Enables an explicitly registered SSR engine globally. This does not register an
+	/// engine; AddSvelteNet without an SSR builder remains client-only.
+	/// </summary>
 	public bool EnableSsr { get; set; } = true;
+
+	/// <summary>Enables client mounting or hydration globally.</summary>
 	public bool EnableCsr { get; set; } = true;
 
 	/// <summary>Vite client build output. Must live under wwwroot so it is publicly served.</summary>
@@ -37,7 +43,7 @@ public class SvelteOptions
 	/// Vite SSR build output. Deliberately NOT under wwwroot — the server bundle
 	/// should never be publicly downloadable.
 	/// </summary>
-	public string ServerOutput { get; set; } = "svelte-ssr";
+	public string ServerOutput { get; set; } = ".svelte-net/server";
 
 	public string DevServerUrl { get; set; } = "http://localhost:5173";
 
@@ -54,9 +60,15 @@ public class SvelteOptions
 	/// </summary>
 	public bool? EnableScaffolding { get; set; }
 
-	/// <summary>Manifest key of the scaffolded client mount helper.</summary>
-	public string MountModule => $"{PagesPath}/mount.ts";
+	/// <summary>
+	/// Enables the legacy reflection discovery/dispatch path for applications without
+	/// generated descriptors. Disabled by default.
+	/// </summary>
+	public bool EnableReflectionFallback { get; set; }
 
-	/// <summary>Manifest key of the scaffolded SSR render helper.</summary>
-	public string RenderModule => $"{PagesPath}/render.ts";
+	/// <summary>Stable Vite entry name for the package-owned client mount helper.</summary>
+	public string MountModule => "sveltenet-client";
+
+	/// <summary>Stable Vite entry name for the package-owned SSR render helper.</summary>
+	public string RenderModule => "sveltenet-ssr";
 }

@@ -16,4 +16,7 @@ public class ComponentOptions
 
 	/// <summary>Overrides <see cref="SvelteOptions.EnableCsr"/> for this component when set.</summary>
 	public bool? Csr { get; set; }
+
+	/// <summary>Cancels server rendering when the owning request is aborted.</summary>
+	public CancellationToken CancellationToken { get; set; }
 }

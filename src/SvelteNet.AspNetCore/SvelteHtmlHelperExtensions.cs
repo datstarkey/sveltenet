@@ -2,6 +2,7 @@ namespace SvelteNet.AspNetCore;
 
 using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Renders Svelte components from MVC views (or any Razor view). With a
@@ -20,14 +21,14 @@ public static class SvelteHtmlHelperExtensions
 	/// <summary>Renders the component bound to the model's [SvelteComponent] attribute.</summary>
 	public static IHtmlContent Svelte(this IHtmlHelper html, object data, string? elementId = null)
 	{
-		var component = SvelteComponentResolver.Resolve(data.GetType());
+		var component = ResolveComponent(html, data);
 		return new HtmlString(SvelteRequestCache.RenderHtml(html.ViewContext.HttpContext, component, data, elementId));
 	}
 
 	/// <summary>Head content for the component bound to the model's [SvelteComponent] attribute.</summary>
 	public static IHtmlContent SvelteHead(this IHtmlHelper html, object data, string? elementId = null)
 	{
-		var component = SvelteComponentResolver.Resolve(data.GetType());
+		var component = ResolveComponent(html, data);
 		return new HtmlString(SvelteRequestCache.RenderHead(html.ViewContext.HttpContext, component, data, elementId));
 	}
 
@@ -39,5 +40,11 @@ public static class SvelteHtmlHelperExtensions
 	public static IHtmlContent SvelteHead(this IHtmlHelper html, string component, object? data = null, string? elementId = null)
 	{
 		return new HtmlString(SvelteRequestCache.RenderHead(html.ViewContext.HttpContext, component, data, elementId));
+	}
+
+	private static string ResolveComponent(IHtmlHelper html, object data)
+	{
+		var options = html.ViewContext.HttpContext.RequestServices.GetRequiredService<SvelteOptions>();
+		return SvelteComponentResolver.Resolve(data.GetType(), options.EnableReflectionFallback);
 	}
 }

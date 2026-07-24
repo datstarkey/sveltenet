@@ -7,7 +7,6 @@ Without JavaScript, forms are plain POSTs with full page reloads. Attach `enhanc
 ```svelte
 <script lang="ts">
     import { enhance } from 'sveltenet/client';
-    import type { IndexData } from './Index.types';
 
     let { data: serverData }: { data: IndexData } = $props();
     // Writable $derived: tracks the server prop, assignable from enhanced responses.

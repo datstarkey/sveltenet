@@ -1,6 +1,8 @@
 # Samples
 
-Each sample demonstrates one slice of SvelteNet and is fully self-contained (own `package.json`, `vite.config.ts`, and `Svelte/` tree).
+Each sample demonstrates one slice of SvelteNet and is fully self-contained (own
+`package.json`, `vite.config.ts`, and colocated component tree). The samples opt into
+Jint explicitly with `AddSvelteNet().AddJintSSR()`.
 
 | Sample | Demonstrates |
 | --- | --- |
@@ -12,7 +14,7 @@ Running any sample:
 
 ```sh
 cd samples/<Sample>
-dotnet run          # Development (via launchSettings); dotnet build generates Svelte/ types
+dotnet run          # Development; dotnet build generates .svelte-net/types
 bun run dev         # in a second terminal: vite + HMR
 
 # production

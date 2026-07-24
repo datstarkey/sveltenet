@@ -1,10 +1,10 @@
 namespace SvelteNet.AspNetCore.Tests;
 
-using Microsoft.Extensions.DependencyInjection;
-using SvelteNet.AspNetCore.Remote;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using SvelteNet.AspNetCore.Remote;
 
 /// <summary>
 /// Integration tests of the query/command/form remote protocol against the RemoteFunctions
@@ -12,6 +12,18 @@ using System.Text.Json;
 /// </summary>
 public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 {
+	private sealed class UnknownLengthJsonContent(string json) : HttpContent
+	{
+		protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+			stream.WriteAsync(Encoding.UTF8.GetBytes(json)).AsTask();
+
+		protected override bool TryComputeLength(out long length)
+		{
+			length = 0;
+			return false;
+		}
+	}
+
 	private readonly RemoteFunctionsFactory _factory;
 
 	public RemoteFunctionTests(RemoteFunctionsFactory factory)
@@ -54,6 +66,18 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		var descriptor = Assert.Single(registry.Services, s => s.Name == "TodoApi");
 		Assert.True(descriptor.IsGenerated);
 		Assert.Equal(6, descriptor.Methods.Length);
+	}
+
+	[Fact]
+	public async Task A_second_feature_gets_an_independent_generated_service()
+	{
+		var registry = _factory.Services.GetRequiredService<SvelteRemoteRegistry>();
+		var descriptor = Assert.Single(registry.Services, s => s.Name == "WeatherApi");
+		Assert.True(descriptor.IsGenerated);
+
+		var json = await ReadJson(
+			await _factory.CreateClient().GetAsync("/_sveltenet/remote/WeatherApi/GetForecasts"));
+		Assert.Equal("Today", json[0].GetProperty("day").GetString());
 	}
 
 	[Fact]
@@ -101,6 +125,36 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		var missingArg = await client.SendAsync(Command("TodoApi/ToggleTodo", new { }));
 		Assert.Equal(HttpStatusCode.BadRequest, missingArg.StatusCode);
 		Assert.Contains("Missing argument 'id'", await missingArg.Content.ReadAsStringAsync());
+	}
+
+	[Fact]
+	public async Task Malformed_json_is_a_bad_request_instead_of_a_server_error()
+	{
+		var request = new HttpRequestMessage(HttpMethod.Post, "/_sveltenet/remote/TodoApi/ToggleTodo")
+		{
+			Content = new StringContent("{\"id\":", Encoding.UTF8, "application/json"),
+			Headers = { { "X-SvelteNet", "true" } }
+		};
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+		Assert.Contains("malformed", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Fact]
+	public async Task Commands_accept_streamed_bodies_without_a_content_length()
+	{
+		var request = new HttpRequestMessage(HttpMethod.Post, "/_sveltenet/remote/TodoApi/ToggleTodo")
+		{
+			Content = new UnknownLengthJsonContent("{\"id\":1}"),
+			Headers = { { "X-SvelteNet", "true" } }
+		};
+		request.Content.Headers.ContentType = new("application/json");
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 	}
 
 	[Fact]
@@ -187,6 +241,41 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		}).SendAsync(request);
 
 		Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-		Assert.Equal("http://localhost/Remote", response.Headers.Location?.ToString());
+		Assert.Equal("/Remote", response.Headers.Location?.ToString());
+	}
+
+	[Fact]
+	public async Task Invalid_plain_form_posts_return_problem_details()
+	{
+		var request = Form("TodoApi/CreateTodo", new() { ["label"] = " ", ["priority"] = "Low" }, enhanced: false);
+		request.Headers.Referrer = new Uri("http://localhost/Remote");
+
+		var response = await _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+		{
+			AllowAutoRedirect = false
+		}).SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+		Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+		Assert.Contains("A label is required.", await response.Content.ReadAsStringAsync());
+	}
+
+	[Fact]
+	public async Task Plain_forms_require_origin_evidence_and_never_redirect_off_site()
+	{
+		var client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+		{
+			AllowAutoRedirect = false
+		});
+		var missingOrigin = Form("TodoApi/CreateTodo", new() { ["label"] = "blocked", ["priority"] = "Low" }, enhanced: false);
+		Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(missingOrigin)).StatusCode);
+
+		var inconsistentReferer = Form("TodoApi/CreateTodo", new() { ["label"] = "safe", ["priority"] = "Low" }, enhanced: false);
+		inconsistentReferer.Headers.Add("Origin", "http://localhost");
+		inconsistentReferer.Headers.Referrer = new Uri("https://evil.example/phish");
+		var response = await client.SendAsync(inconsistentReferer);
+
+		Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+		Assert.Equal("/", response.Headers.Location?.ToString());
 	}
 }

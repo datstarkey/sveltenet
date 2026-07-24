@@ -1,5 +1,7 @@
 namespace SvelteNet.AspNetCore;
 
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Dev;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -10,42 +12,33 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Remote;
 using SvelteNet.Remote;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 
 public static class SvelteNetExtensions
 {
 	/// <summary>
 	/// Registers SvelteNet. [SvelteRemote] services are discovered from the calling
 	/// assembly; pass <paramref name="applicationAssemblies"/> when they live elsewhere.
+	/// Rendering is client-only unless an SSR renderer is selected on the returned builder.
 	/// </summary>
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static IServiceCollection AddSvelteNet(this IServiceCollection services, Action<SvelteOptions>? configure = null, params Assembly[] applicationAssemblies)
+	public static SvelteNetBuilder AddSvelteNet(this IServiceCollection services, Action<SvelteOptions>? configure = null, params Assembly[] applicationAssemblies)
 	{
 		// The calling assembly is the app itself — the default discovery scope.
 		// Scoping matters when several SvelteNet apps share a process
 		// (WebApplicationFactory test hosts).
-		var assemblies = applicationAssemblies is { Length: > 0 }
+		var defaultAssemblies = applicationAssemblies is { Length: > 0 }
 			? applicationAssemblies
 			: [Assembly.GetCallingAssembly()];
-
-		services.AddSingleton(sp =>
-		{
-			var env = sp.GetRequiredService<IWebHostEnvironment>();
-			var options = new SvelteOptions { ContentRoot = env.ContentRootPath };
-
-			// Dev mode = load from the Vite dev server. Containers get production behavior
-			// even under the Development environment (no dev server available inside).
-			if (env.IsDevelopment() && Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") != "true")
-				options.IsDev = true;
-
-			configure?.Invoke(options);
-			options.ApplicationAssemblies ??= assemblies;
-			return options;
-		});
+		var env = services.LastOrDefault(d => d.ServiceType == typeof(IWebHostEnvironment))?.ImplementationInstance
+				  as IWebHostEnvironment;
+		var options = new SvelteOptions { ContentRoot = env?.ContentRootPath ?? Directory.GetCurrentDirectory() };
+		if (env?.IsDevelopment() == true && Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") != "true")
+			options.IsDev = true;
+		configure?.Invoke(options);
+		options.ApplicationAssemblies ??= defaultAssemblies;
+		var assemblies = options.ApplicationAssemblies;
+		services.AddSingleton(options);
 		services.AddHttpContextAccessor();
-		services.AddSingleton<ISvelteSsrFetchHandler, RemoteSsrFetchHandler>();
-		services.AddSingleton<ISvelteSsrEngine, JintSsrEngine>();
 		services.AddSingleton<SvelteRenderer>();
 
 		// BYOV: DataAnnotations run on remote-function arguments by default; register
@@ -59,16 +52,19 @@ public static class SvelteNetExtensions
 		var descriptors = SvelteRemoteDescriptors.All
 			.Where(d => assemblies.Contains(d.ServiceType.Assembly))
 			.ToList();
-		if (descriptors.Count == 0)
-			descriptors = TypeDiscovery
-				.FindTypes(assemblies, t => t.IsDefined(typeof(SvelteRemoteAttribute), false))
-				.Select(SvelteRemoteDescriptors.For)
-				.ToList();
+		if (options.EnableReflectionFallback)
+		{
+			var registeredTypes = descriptors.Select(d => d.ServiceType).ToHashSet();
+			descriptors.AddRange(TypeDiscovery
+				.FindTypes(assemblies, t =>
+					t.IsDefined(typeof(SvelteRemoteAttribute), false) && !registeredTypes.Contains(t))
+				.Select(SvelteRemoteDescriptors.FromReflection));
+		}
 
 		foreach (var descriptor in descriptors) services.AddScoped(descriptor.ServiceType);
 		services.AddSingleton(new SvelteRemoteRegistry(descriptors));
 
-		return services;
+		return new SvelteNetBuilder(services);
 	}
 
 	/// <summary>

@@ -1,8 +1,8 @@
 namespace SvelteNet.Core.Tests;
 
-using SvelteNet.Remote;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using SvelteNet.Remote;
 
 /// <summary>
 /// The BYOV validation pipeline: validators run between binding and invocation

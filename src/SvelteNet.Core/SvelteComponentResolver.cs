@@ -2,6 +2,7 @@ namespace SvelteNet;
 
 using System.Collections.Concurrent;
 using System.Reflection;
+using SvelteNet.Generated;
 
 /// <summary>Maps [SvelteComponent] model types to their component paths.</summary>
 public static class SvelteComponentResolver
@@ -9,15 +10,25 @@ public static class SvelteComponentResolver
 	private static readonly string[] TrimmedSuffixes = ["ViewModel", "Model", "Dto"];
 	private static readonly ConcurrentDictionary<Type, string> Cache = new();
 
-	public static string Resolve(Type type) => Cache.GetOrAdd(type, static t =>
+	public static string Resolve(Type type, bool enableReflectionFallback = false)
 	{
-		var attribute = t.GetCustomAttribute<SvelteComponentAttribute>()
-			?? throw new InvalidOperationException(
-				$"'{t.Name}' has no [SvelteComponent] attribute. Add one to render it with Html.Svelte(model), " +
-				"or name the component explicitly with Html.Svelte(\"path\", model).");
+		if (SvelteGeneratedMetadata.TryGetComponent(type, out var generated)) return generated.Component;
+		if (!enableReflectionFallback)
+			throw new InvalidOperationException(
+				$"No generated Svelte component descriptor was found for '{type.FullName}'. " +
+				"Add [SvelteComponent] and reference SvelteNet.Generators as an analyzer, " +
+				"or explicitly enable the legacy reflection fallback.");
 
-		return attribute.Component ?? $"Components/{TrimSuffix(t.Name)}";
-	});
+		return Cache.GetOrAdd(type, static t =>
+		{
+			var attribute = t.GetCustomAttribute<SvelteComponentAttribute>()
+				?? throw new InvalidOperationException(
+					$"'{t.Name}' has no [SvelteComponent] attribute. Add one to render it with Html.Svelte(model), " +
+					"or name the component explicitly with Html.Svelte(\"path\", model).");
+
+			return attribute.Component ?? $"Components/{TrimSuffix(t.Name)}";
+		});
+	}
 
 	private static string TrimSuffix(string name)
 	{

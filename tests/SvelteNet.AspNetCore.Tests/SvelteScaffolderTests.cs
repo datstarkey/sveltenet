@@ -2,6 +2,7 @@ namespace SvelteNet.AspNetCore.Tests;
 
 using SvelteNet.AspNetCore.Dev;
 using SvelteNet.AspNetCore.Tests.Fixtures;
+using SvelteNet.AspNetCore.Tests.Fixtures.Features.Inventory;
 using SvelteNet.AspNetCore.Tests.Fixtures.Pages;
 using SvelteNet.AspNetCore.Tests.Fixtures.Pages.Admin;
 
@@ -22,15 +23,19 @@ public class SvelteScaffolderTests : IDisposable
 	private string ReadSvelteFile(params string[] segments) =>
 		File.ReadAllText(Path.Combine([_root, "Svelte", .. segments]));
 
+	private string ReadGeneratedFile(params string[] segments) =>
+		File.ReadAllText(Path.Combine([_root, ".svelte-net", "types", .. segments]));
+
 	[Fact]
 	public void Generates_shared_types_for_all_referenced_models()
 	{
 		Run();
 
-		var types = ReadSvelteFile("types.ts");
-		Assert.Contains("export interface Widget", types);
-		Assert.Contains("export type WidgetKind = 'basic' | 'fancy';", types);
-		Assert.Contains("export interface Paged<T>", types);
+		var types = ReadGeneratedFile("models.d.ts");
+		Assert.Contains("interface Widget", types);
+		Assert.Contains("type WidgetKind = 'basic' | 'fancy';", types);
+		Assert.Contains("interface Paged<T>", types);
+		Assert.DoesNotContain("export interface Widget", types);
 	}
 
 	[Fact]
@@ -38,24 +43,27 @@ public class SvelteScaffolderTests : IDisposable
 	{
 		Run();
 
-		var types = ReadSvelteFile("Home.types.ts");
-		Assert.Contains("export interface HomeData", types);
+		var types = ReadGeneratedFile("Svelte", "Home.d.ts");
+		Assert.Contains("interface HomeData", types);
 		Assert.Contains("title: string;", types);
 		Assert.Contains("widgets: Widget[];", types);
 		Assert.Contains("problem: { title: string; status: number; errors: Record<string, string[]> } | null;", types);
 		Assert.Contains("antiforgeryToken: string;", types);
-		Assert.Contains("import type { Widget } from './types';", types);
+		Assert.DoesNotContain("import type", types);
 	}
 
 	[Fact]
-	public void Nested_pages_mirror_the_folder_structure_with_relative_imports()
+	public void Nested_pages_share_the_ambient_declaration_file()
 	{
 		Run();
 
-		var types = ReadSvelteFile("Admin", "Users.types.ts");
-		Assert.Contains("export interface UsersData", types);
+		var types = ReadGeneratedFile("Svelte", "Admin", "Users.d.ts");
+		Assert.Contains("interface AdminUsersData", types);
 		Assert.Contains("users: Paged<Widget>;", types);
-		Assert.Contains("import type { Paged, Widget } from '../types';", types);
+		Assert.False(File.Exists(Path.Combine(_root, "Svelte", "Admin", "Users.types.d.ts")));
+		Assert.Contains(
+			"let { data }: { data: AdminUsersData } = $props();",
+			ReadSvelteFile("Admin", "Users.svelte"));
 	}
 
 	[Fact]
@@ -64,7 +72,7 @@ public class SvelteScaffolderTests : IDisposable
 		Run();
 
 		var component = ReadSvelteFile("Home.svelte");
-		Assert.Contains("import type { HomeData } from './Home.types';", component);
+		Assert.DoesNotContain("import type", component);
 		Assert.Contains("let { data }: { data: HomeData } = $props();", component);
 	}
 
@@ -84,7 +92,7 @@ public class SvelteScaffolderTests : IDisposable
 	public void Regenerates_type_files_every_run()
 	{
 		Run();
-		var typesPath = Path.Combine(_root, "Svelte", "Home.types.ts");
+		var typesPath = Path.Combine(_root, ".svelte-net", "types", "Svelte", "Home.d.ts");
 		File.WriteAllText(typesPath, "// stale");
 
 		Run();
@@ -97,8 +105,8 @@ public class SvelteScaffolderTests : IDisposable
 	{
 		Run();
 
-		Assert.Contains("export { mountComponent } from 'sveltenet/client';", ReadSvelteFile("mount.ts"));
-		Assert.Contains("export { renderComponent } from 'sveltenet/server';", ReadSvelteFile("render.ts"));
+		Assert.False(File.Exists(Path.Combine(_root, "Svelte", "mount.ts")));
+		Assert.False(File.Exists(Path.Combine(_root, "Svelte", "render.ts")));
 		var viteConfig = File.ReadAllText(Path.Combine(_root, "vite.config.ts"));
 		Assert.Contains("import { sveltenet } from 'sveltenet/vite';", viteConfig);
 		Assert.Contains("plugins: [sveltenet()]", viteConfig);
@@ -106,14 +114,15 @@ public class SvelteScaffolderTests : IDisposable
 	}
 
 	[Fact]
-	public void Vite_config_forwards_non_default_paths_to_the_plugin()
+	public void Non_default_source_roots_keep_project_wide_vite_discovery()
 	{
 		_options.PagesPath = "Islands";
 		Run();
 
 		var viteConfig = File.ReadAllText(Path.Combine(_root, "vite.config.ts"));
-		Assert.Contains("pagesPath: 'Islands'", viteConfig);
-		Assert.Contains("serverOutDir: 'svelte-ssr'", viteConfig);
+		Assert.Contains("plugins: [sveltenet()]", viteConfig);
+		Assert.DoesNotContain("pagesPath", viteConfig);
+		Assert.True(File.Exists(Path.Combine(_root, ".svelte-net", "types", "Islands", "Home.d.ts")));
 	}
 
 	[Fact]
@@ -121,10 +130,10 @@ public class SvelteScaffolderTests : IDisposable
 	{
 		Run();
 
-		Assert.Contains("export interface CardViewModel", ReadSvelteFile("types.ts"));
+		Assert.Contains("interface CardViewModel", ReadGeneratedFile("models.d.ts"));
 
 		var component = ReadSvelteFile("Components", "Card.svelte");
-		Assert.Contains("import type { CardViewModel } from '../types';", component);
+		Assert.DoesNotContain("import type", component);
 		Assert.Contains("let { data }: { data: CardViewModel } = $props();", component);
 	}
 
@@ -133,12 +142,43 @@ public class SvelteScaffolderTests : IDisposable
 	{
 		Run();
 
-		var remote = ReadSvelteFile("remote.ts");
+		var remote = ReadSvelteFile("WidgetApi.remote.ts");
 		Assert.Contains("import { command, form, query } from 'sveltenet/remote';", remote);
-		Assert.Contains("import type { Widget } from './types';", remote);
-		Assert.Contains("export const search = query<Widget[], [term: string, limit: number]>('WidgetApi/Search', (term, limit) => ({ term, limit }));", remote);
-		Assert.Contains("export const clear = command<void>('WidgetApi/Clear');", remote);
-		Assert.Contains("export const save = form<number, { widget: Widget }>('WidgetApi/Save');", remote);
+		Assert.DoesNotContain("import type", remote);
+		Assert.Contains("export class WidgetApi", remote);
+		Assert.Contains("static readonly Search = query<Widget[], [term: string, limit: number]>('WidgetApi/Search', (term, limit) => ({ term, limit }));", remote);
+		Assert.Contains("static readonly Clear = command<void>('WidgetApi/Clear');", remote);
+		Assert.Contains("static readonly Save = form<number, { widget: Widget }>('WidgetApi/Save');", remote);
+	}
+
+	[Fact]
+	public void Remote_services_get_separate_client_classes()
+	{
+		SvelteScaffolder.Run(_options, [typeof(HomeModel)], [], [typeof(WidgetApi), typeof(CatalogApi)]);
+
+		Assert.Contains("class WidgetApi", ReadSvelteFile("WidgetApi.remote.ts"));
+		Assert.Contains("class CatalogApi", ReadSvelteFile("CatalogApi.remote.ts"));
+	}
+
+	[Fact]
+	public void Feature_remote_clients_are_colocated_by_namespace()
+	{
+		SvelteScaffolder.Run(_options, [], [], [typeof(InventoryApi)]);
+
+		var remote = ReadSvelteFile("Inventory", "InventoryApi.remote.ts");
+		Assert.Contains("export class InventoryApi", remote);
+		Assert.Contains("static readonly GetStock", remote);
+	}
+
+	[Fact]
+	public void Removing_all_remote_services_removes_the_stale_client()
+	{
+		Run();
+		Assert.Contains("static readonly Search", ReadSvelteFile("WidgetApi.remote.ts"));
+
+		SvelteScaffolder.Run(_options, [], [], []);
+
+		Assert.False(File.Exists(Path.Combine(_root, "Svelte", "WidgetApi.remote.ts")));
 	}
 
 	[Fact]
@@ -152,9 +192,25 @@ public class SvelteScaffolderTests : IDisposable
 
 		Run();
 
-		var routes = ReadSvelteFile("routes.d.ts");
+		var routes = ReadGeneratedFile("routes.d.ts");
 		Assert.Contains("\"/\"", routes);
 		Assert.Contains("\"/Admin/Users\"", routes);
 		Assert.DoesNotContain("_Layout", routes);
+	}
+
+	[Fact]
+	public void Removing_all_pages_replaces_stale_route_ids()
+	{
+		var pages = Path.Combine(_root, "Pages");
+		Directory.CreateDirectory(pages);
+		var page = Path.Combine(pages, "Index.cshtml");
+		File.WriteAllText(page, "@page");
+		Run();
+		Assert.Contains("\"/\"", ReadGeneratedFile("routes.d.ts"));
+
+		File.Delete(page);
+		Run();
+
+		Assert.Contains("type RouteId = never | (string & {});", ReadGeneratedFile("routes.d.ts"));
 	}
 }

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore SvelteNet.slnx
+      - run: dotnet test SvelteNet.slnx --no-restore --configuration Release
+      - run: dotnet format SvelteNet.slnx --no-restore --verify-no-changes
+      - run: dotnet pack src/SvelteNet.AspNetCore/SvelteNet.AspNetCore.csproj --no-restore --configuration Release
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun audit
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test
+        working-directory: packages/sveltenet
+      - run: bun run check
+        working-directory: packages/sveltenet
+      - run: dotnet restore SvelteNet.slnx
+      - run: dotnet build SvelteNet.slnx --no-restore --configuration Release
+      - run: bun run check
+        working-directory: samples/MvcHello
+      - run: bun run build
+        working-directory: samples/MvcHello
+      - run: bun run check
+        working-directory: samples/RemoteFunctions
+      - run: bun run build
+        working-directory: samples/RemoteFunctions
+      - run: bun run check
+        working-directory: samples/TodoApp
+      - run: bun run build
+        working-directory: samples/TodoApp
+      - run: bun run docs:build

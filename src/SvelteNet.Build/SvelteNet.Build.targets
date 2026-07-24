@@ -1,4 +1,4 @@
-<!-- Generates SvelteNet TypeScript (types.ts, *.types.ts, remote.ts, routes.d.ts)
+<!-- Generates .svelte-net TypeScript declarations and colocated *.remote.ts clients
      from the built assembly on every `dotnet build`. Import from the app project:
 
        <ProjectReference Include="..\SvelteNet.Build\SvelteNet.Build.csproj"
@@ -12,17 +12,20 @@
     <PropertyGroup>
         <SvelteNetTypeGen Condition="'$(SvelteNetTypeGen)' == ''">true</SvelteNetTypeGen>
         <SvelteNetPagesPath Condition="'$(SvelteNetPagesPath)' == ''">Svelte</SvelteNetPagesPath>
+        <SvelteNetClientOutput Condition="'$(SvelteNetClientOutput)' == ''">wwwroot/client</SvelteNetClientOutput>
+        <SvelteNetServerOutput Condition="'$(SvelteNetServerOutput)' == ''">.svelte-net/server</SvelteNetServerOutput>
+        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\net10.0\any\SvelteNet.Build.dll')">$(MSBuildThisFileDirectory)..\tools\net10.0\any\SvelteNet.Build.dll</SvelteNetBuildTool>
         <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == ''">$(MSBuildThisFileDirectory)bin\$(Configuration)\net10.0\SvelteNet.Build.dll</SvelteNetBuildTool>
     </PropertyGroup>
 
-    <!-- Inputs/Outputs make this incremental: the scaffolder rewrites types.ts on
-         each run, so the target is skipped until the app assembly changes again. -->
     <Target Name="SvelteNetGenerateTypes"
             AfterTargets="Build"
-            Inputs="$(TargetPath)"
-            Outputs="$(MSBuildProjectDirectory)\$(SvelteNetPagesPath)\types.ts"
             Condition="'$(SvelteNetTypeGen)' == 'true' AND '$(DesignTimeBuild)' != 'true'">
-        <Exec Command="dotnet exec &quot;$(SvelteNetBuildTool)&quot; &quot;$(TargetPath)&quot; &quot;$(MSBuildProjectDirectory)&quot;" />
+        <PropertyGroup>
+            <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' == ''">$(TargetPath)</_SvelteNetApplicationAssemblies>
+            <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' != ''">$(SvelteNetApplicationAssemblies)</_SvelteNetApplicationAssemblies>
+        </PropertyGroup>
+        <Exec Command="dotnet exec &quot;$(SvelteNetBuildTool)&quot; &quot;$(TargetPath)&quot; &quot;$(MSBuildProjectDirectory)&quot; &quot;$(SvelteNetPagesPath)&quot; &quot;$(SvelteNetClientOutput)&quot; &quot;$(SvelteNetServerOutput)&quot; &quot;$(_SvelteNetApplicationAssemblies)&quot;" />
     </Target>
 
 </Project>

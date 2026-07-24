@@ -1,6 +1,7 @@
 namespace SvelteNet.TypeGen;
 
 using System.Reflection;
+using System.Text.Json.Serialization;
 
 public static class TypeScriptExtensions
 {
@@ -10,21 +11,29 @@ public static class TypeScriptExtensions
 
 		if (exportType.IsEnum)
 		{
-			// Names are camelCased to match JsonStringEnumConverter(JsonNamingPolicy.CamelCase).
-			var members = Enum.GetNames(exportType).Select(s => $"'{s.ToCamelCase()}'");
+			var members = exportType.GetFields(BindingFlags.Public | BindingFlags.Static)
+				.Select(f => f.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? f.Name.ToCamelCase())
+				.Select(s => $"'{s}'");
 			return $"export type {exportType.TsType()} = {string.Join(" | ", members)};";
 		}
+		if (exportType.IsDefined(typeof(JsonConverterAttribute), inherit: true))
+			return $"export type {exportType.TsType()} = unknown;";
 
 		exportType = useGenericTypes || !exportType.IsGenericType ? exportType : exportType.GetGenericTypeDefinition();
 
 		var nullability = new NullabilityInfoContext();
 		var props = exportType
 			.GetProperties(BindingFlags.FlattenHierarchy | BindingFlags.Public | BindingFlags.Instance)
-			.Where(p => p.CanRead)
+			.Where(p => p.CanRead && !IsAlwaysIgnored(p))
 			.Select(p =>
 			{
 				var nullable = nullability.Create(p).ReadState == NullabilityState.Nullable;
-				return $"{p.Name.ToCamelCase()}: {p.PropertyType.TsType()}{(nullable ? " | null" : "")};";
+				var name = p.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? p.Name.ToCamelCase();
+				var optional = IsConditionallyIgnored(p) ? "?" : string.Empty;
+				var propertyType = p.IsDefined(typeof(JsonConverterAttribute), inherit: true)
+					? "unknown"
+					: p.PropertyType.TsType() + (nullable ? " | null" : "");
+				return $"{name}{optional}: {propertyType};";
 			});
 
 		var body = string.Join(Environment.NewLine + "\t", props);
@@ -53,6 +62,9 @@ export interface {{exportType.TsType()}} {
 		if (stripped.TsSimpleName(out var result))
 			return result;
 
+		if (stripped == typeof(byte[]))
+			return "string";
+
 		if (stripped.IsCollectionType(out result))
 			return result;
 
@@ -67,6 +79,18 @@ export interface {{exportType.TsType()}} {
 			return "any";
 
 		return stripped.Name.RemoveTypeArity();
+	}
+
+	private static bool IsAlwaysIgnored(PropertyInfo property)
+	{
+		var attribute = property.GetCustomAttribute<JsonIgnoreAttribute>();
+		return attribute is not null && attribute.Condition == JsonIgnoreCondition.Always;
+	}
+
+	private static bool IsConditionallyIgnored(PropertyInfo property)
+	{
+		var condition = property.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition;
+		return condition is JsonIgnoreCondition.WhenWritingDefault or JsonIgnoreCondition.WhenWritingNull;
 	}
 
 	static string GetTsDictionaryTypeName(this Type type)
@@ -93,7 +117,7 @@ export interface {{exportType.TsType()}} {
 
 		// non-generic IDictionary
 		if (type.GetInterface("System.Collections.IDictionary") != null ||
-		    (type.FullName != null && type.FullName.StartsWith("System.Collections.IDictionary")))
+			(type.FullName != null && type.FullName.StartsWith("System.Collections.IDictionary")))
 		{
 			return "{ [key: string]: string; }";
 		}

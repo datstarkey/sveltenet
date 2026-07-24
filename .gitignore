@@ -33,3 +33,5 @@ _ReSharper*/
 .vs/
 /publish/
 node_modules/
+.svelte-net/
+.idea/

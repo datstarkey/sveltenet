@@ -1,4 +1,4 @@
-﻿namespace SvelteNet.TypeGen;
+namespace SvelteNet.TypeGen;
 
 using System;
 using System.Collections.Generic;
@@ -19,19 +19,19 @@ public static class TypeExtensions
 		return type.FullName?.StartsWith("System.") ?? false;
 	}
 
-	
-	
+
+
 	static bool IsValidType(Type type, out Type? stripped)
 	{
 		stripped = type.StripNullable()
 			.Flatten();
 		return stripped != null &&
-		       (!stripped.IsGenericType || stripped.IsCustomGenericType()) &&
-		       !stripped.IsSimpleType()
-		       && !stripped.IsSystemType()
-		       && stripped is not { IsEnum: false, IsClass: false }
-		       && stripped is { IsPrimitive: false }
-		       && (stripped.IsPublic || stripped.IsNestedPublic);
+			   (!stripped.IsGenericType || stripped.IsCustomGenericType()) &&
+			   !stripped.IsSimpleType()
+			   && !stripped.IsSystemType()
+			   && stripped is not { IsEnum: false, IsClass: false }
+			   && stripped is { IsPrimitive: false }
+			   && (stripped.IsPublic || stripped.IsNestedPublic);
 
 	}
 
@@ -45,7 +45,7 @@ public static class TypeExtensions
 			list.Add(a);
 			list.AddRange(a.GetGenericTypes());
 		}
-		if(type.IsCustomGenericType())
+		if (type.IsCustomGenericType())
 			list.Add(type);
 		return list;
 	}
@@ -65,21 +65,21 @@ public static class TypeExtensions
 		var list = new List<Type>();
 		void AddToList(Type t)
 		{
-			if(!IsValidType(t,out var result) || result == null ||  list.Contains(result)) return;
+			if (!IsValidType(t, out var result) || result == null || list.Contains(result)) return;
 			list.Add(result);
 		}
 		AddToList(type);
 		var index = 0;
-		while (index<list.Count)
+		while (index < list.Count)
 		{
 			var t = list[index];
-			
+
 			if (t.IsGenericType)
 			{
 				foreach (var a in GetGenericTypes(t))
 					AddToList(a);
 			}
-			
+
 			var props = t.GetPropTypes();
 			foreach (var prop in props)
 			{
@@ -88,7 +88,7 @@ public static class TypeExtensions
 			index++;
 		}
 		return list;
-		
+
 	}
 
 	public static bool IsCustomGenericType(this Type type)
@@ -99,16 +99,16 @@ public static class TypeExtensions
 	public static bool IsCollectionType(this Type type)
 	{
 		return type.FullName != "System.String"// not a string
-		       && !type.IsDictionaryType()// not a dictionary
-		       && (type.GetInterface("IEnumerable") != null || (type.FullName != null && type.FullName.StartsWith("System.Collections.IEnumerable")));// implements IEnumerable or is IEnumerable
+			   && !type.IsDictionaryType()// not a dictionary
+			   && (type.GetInterface("IEnumerable") != null || (type.FullName != null && type.FullName.StartsWith("System.Collections.IEnumerable")));// implements IEnumerable or is IEnumerable
 	}
 
 	public static bool IsDictionaryType(this Type type)
 	{
 		return type.GetInterface("System.Collections.Generic.IDictionary`2") != null
-		       || (type.FullName != null && type.FullName.StartsWith("System.Collections.Generic.IDictionary`2"))
-		       || type.GetInterface("System.Collections.IDictionary") != null
-		       || (type.FullName != null && type.FullName.StartsWith("System.Collections.IDictionary"));
+			   || (type.FullName != null && type.FullName.StartsWith("System.Collections.Generic.IDictionary`2"))
+			   || type.GetInterface("System.Collections.IDictionary") != null
+			   || (type.FullName != null && type.FullName.StartsWith("System.Collections.IDictionary"));
 
 	}
 

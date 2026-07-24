@@ -1,5 +1,7 @@
 namespace SvelteNet.AspNetCore;
 
+using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Http;
@@ -7,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
+using SvelteNet.Generated;
 using SvelteNet.TypeGen;
-using System.Collections.Concurrent;
-using System.Reflection;
 
 /// <summary>
 /// Razor Pages base model that renders the Svelte component matching the page's route,
@@ -29,16 +30,31 @@ public abstract class SveltePage : PageModel
 
 	/// <summary>Component path derived from the page route, e.g. "Index" or "Admin/Users".</summary>
 	public virtual string SvelteComponent =>
-		PageContext.ActionDescriptor.ViewEnginePath.TrimStart('/');
+		SvelteGeneratedMetadata.TryGetPage(GetType(), out var generated)
+			? generated.Component
+			: PageContext.ActionDescriptor.ViewEnginePath.TrimStart('/');
 
 	protected virtual ComponentOptions SvelteComponentOptions()
 	{
-		var props = PropCache.GetOrAdd(GetType(), static t => t
-			.GetProperties()
-			.Where(p => p.IsDefined(typeof(SveltePropAttribute), true))
-			.ToArray());
+		Dictionary<string, object?> data;
+		if (SvelteGeneratedMetadata.TryGetPage(GetType(), out var generated))
+		{
+			data = generated.Properties.ToDictionary(p => p.JsonName, p => p.GetValue(this));
+		}
+		else
+		{
+			var options = HttpContext.RequestServices.GetRequiredService<SvelteOptions>();
+			if (!options.EnableReflectionFallback)
+				throw new InvalidOperationException(
+					$"No generated Svelte page descriptor was found for '{GetType().FullName}'. " +
+					"Reference SvelteNet.Generators as an analyzer, or explicitly enable the legacy reflection fallback.");
+			var props = PropCache.GetOrAdd(GetType(), static t => t
+				.GetProperties()
+				.Where(p => p.IsDefined(typeof(SveltePropAttribute), true))
+				.ToArray());
+			data = props.ToDictionary(p => p.Name.ToCamelCase(), object? (p) => p.GetValue(this));
+		}
 
-		var data = props.ToDictionary(p => p.Name.ToCamelCase(), object? (p) => p.GetValue(this));
 		data["problem"] = ValidationProblem();
 		data["antiforgeryToken"] = HttpContext.RequestServices
 			.GetService<IAntiforgery>()?.GetAndStoreTokens(HttpContext).RequestToken ?? string.Empty;
@@ -46,7 +62,8 @@ public abstract class SveltePage : PageModel
 		return new ComponentOptions
 		{
 			Component = SvelteComponent,
-			Props = new Dictionary<string, object?> { ["data"] = data }
+			Props = new Dictionary<string, object?> { ["data"] = data },
+			CancellationToken = HttpContext.RequestAborted
 		};
 	}
 

@@ -12,33 +12,58 @@ public class TodoApi(TodoStore store)
     {
         if (string.IsNullOrWhiteSpace(label))
             throw new SvelteValidationException(nameof(label), "A label is required.");
-        // ...
+        return Task.FromResult(store.Add(label, priority));
     }
 }
 ```
 
-The scaffolder generates a typed client (`Svelte/remote.ts`) and **SvelteNet.Generators** (a Roslyn source generator) compiles the dispatchers — argument binding, invocation, *and registration* are generated code with no reflection: each service's descriptor self-registers via a `[ModuleInitializer]`, and `AddSvelteNet()` consumes those descriptors, scoped to the calling assembly (see [Options → Discovery scope](options.md#discovery-scope)). A reflection fallback covers projects without the analyzer. The full flow lives in `samples/RemoteFunctions`:
+The scaffolder generates a typed class beside each C# service
+(`Features/Todos/TodoApi.remote.ts`
+in the sample) and ambient model declarations under `.svelte-net/types`.
+**SvelteNet.Generators** compiles argument binding, validation metadata, invocation,
+registration, page props, component mappings, and TypeScript declarations. Each
+assembly's descriptors self-register through a module initializer; `AddSvelteNet()`
+consumes only descriptors in the configured application scope. There is no reflection
+scan on the normal path. Apps intentionally built without the analyzer can opt into
+`EnableReflectionFallback` (see [Options → Discovery scope](options.md#discovery-scope)).
+The full flow lives in `samples/RemoteFunctions`, whose service, models, validator,
+store, Svelte components, and generated client are colocated in one vertical slice:
+
+```text
+Features/Todos/
+  TodoApi.cs
+  TodoStore.cs
+  Todo.cs
+  Feedback.cs
+  Index.svelte
+  Stats.svelte
+  TodoApi.remote.ts
+Features/Weather/
+  WeatherApi.cs
+  Weather.svelte
+  WeatherApi.remote.ts
+```
 
 ```svelte
 <script lang="ts">
-    import { createTodo, getStats, getTodos, toggleTodo } from './remote';
+    import { TodoApi } from './TodoApi.remote';
 
-    const todos = getTodos();     // cached + deduped: getTodos() === getTodos()
+    const todos = TodoApi.GetTodos(); // cached + deduped
 </script>
 
 {#if todos.loading}<p>loading…</p>
 {:else}
     {#each todos.current ?? [] as todo (todo.id)}
-        <button onclick={() => toggleTodo(todo.id).updates(todos, getStats())}>toggle</button>
+        <button onclick={() => TodoApi.ToggleTodo(todo.id).updates(todos, TodoApi.GetStats())}>toggle</button>
     {/each}
 {/if}
 
-<form {...createTodo}>
-    {#each createTodo.fields.label.issues() ?? [] as issue}<p>{issue.message}</p>{/each}
-    <input {...createTodo.fields.label.as('text')} />
-    <button disabled={!!createTodo.pending}>Add</button>
+<form {...TodoApi.CreateTodo}>
+    {#each TodoApi.CreateTodo.fields.label.issues() ?? [] as issue}<p>{issue.message}</p>{/each}
+    <input {...TodoApi.CreateTodo.fields.label.as('text')} />
+    <button disabled={!!TodoApi.CreateTodo.pending}>Add</button>
 </form>
-{#if createTodo.result}<p>Added!</p>{/if}
+{#if TodoApi.CreateTodo.result}<p>Added!</p>{/if}
 ```
 
 Semantics mirror SvelteKit: queries are GET, cached, with `current`/`loading`/`error`, `refresh()`, and `set()`; commands are POST JSON promises with `.updates(...queries)`; forms spread onto `<form>`, expose `fields` (`as()`, `issues()`, `value()`, `set()`), `pending`, `result`, `validate()`, `enhance(cb)` with `form.submit()`, and `for(id)` for lists — and post/redirect without JavaScript. Successful form submits refresh all page queries. Endpoints live under `/_sveltenet/remote` (customize/authorize via `MapSvelteRemote`).
@@ -90,7 +115,7 @@ sveltenet({ experimentalAsync: true })
 <svelte:boundary>
 	{#snippet pending()}<p>loading…</p>{/snippet}
 
-	{#each await getTodos() as todo (todo.id)}
+	{#each await TodoApi.GetTodos() as todo (todo.id)}
 		<li>{todo.label}</li>
 	{/each}
 </svelte:boundary>
@@ -98,19 +123,30 @@ sveltenet({ experimentalAsync: true })
 
 `refresh()` (and `command(...).updates(...)`) re-runs the awaits automatically.
 
-**SSR**: an in-process fetch bridge (`ISvelteSsrFetchHandler` / `RemoteSsrFetchHandler`) routes `fetch` calls made inside the SSR engine straight to the [Query] descriptors — no HTTP round-trip — and the engine serves a `node:async_hooks` shim so Svelte's async server runtime loads.
+**SSR is opt-in** with `AddJintSSR()`, `AddNodeSSR()`, `AddBunJsSSR()`, or a
+custom renderer. Jint's in-process fetch bridge (`ISvelteSsrFetchHandler` /
+`RemoteSsrFetchHandler`) routes `fetch` calls straight to the generated `[Query]`
+descriptor with no HTTP round-trip, and serves a `node:async_hooks` shim for Svelte's
+async server runtime. The Node.js and Bun renderers resolve relative fetches against
+the current app and make loopback HTTP requests while forwarding cookies and
+authorization. See [SSR renderers](ssr.md).
 
 **Fully awaited SSR + hydration stash**: a static `{#snippet pending()}` makes Svelte's compiler DROP the boundary's children from the server bundle (pending always renders, even in Node). Pass the snippet through `clientPending` instead:
 
 ```svelte
 {#snippet loading()}<p>loading…</p>{/snippet}
 <svelte:boundary pending={clientPending(loading)}>
-	{#each await getTodos() as todo (todo.id)}...{/each}
+	{#each await TodoApi.GetTodos() as todo (todo.id)}...{/each}
 </svelte:boundary>
 ```
 
 The server then awaits the queries (through the bridge) and renders the real HTML, and query results are stashed via Svelte's `hydratable` into the page head (`window.__svelte.h`) — hydration adopts them with **zero network requests**. `refresh()` always performs a real fetch.
 
-On the client, query instances are cached (`getTodos() === getTodos()` per argument set). On the server they are deliberately **not** — SSR engines are pooled and keep the module graph alive across requests, so a cached instance would serve the first render's data forever and skip the hydration stash. `hydratable` still dedupes fetches within a single render by key.
+On the client, query instances are cached (`TodoApi.GetTodos() ===
+TodoApi.GetTodos()` per argument set). On the server they are deliberately **not**.
+This is essential for pooled/persistent renderers such as Jint, whose module graph
+survives across requests: a cached query could otherwise serve the first render's data
+forever and skip the hydration stash. `hydratable` still dedupes fetches within one
+render by key.
 
-Queries are reactive thenables: `then`/`catch`/`finally` are property getters that read internal state, because `await` only touches Svelte's dependency tracking during the synchronous `.then` property access. That's what makes `{#each await getTodos() ...}` re-render after `refresh()`/`.updates()`/`set()` — including after a hydratable-adopted hydration.
+Queries are reactive thenables: `then`/`catch`/`finally` are property getters that read internal state, because `await` only touches Svelte's dependency tracking during the synchronous `.then` property access. That's what makes `{#each await TodoApi.GetTodos() ...}` re-render after `refresh()`/`.updates()`/`set()` — including after a hydratable-adopted hydration.

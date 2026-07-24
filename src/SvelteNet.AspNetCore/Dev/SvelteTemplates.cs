@@ -2,31 +2,17 @@ namespace SvelteNet.AspNetCore.Dev;
 
 /// <summary>
 /// Write-once file templates scaffolded in dev mode. Users own them after creation.
-/// The mount/render entries are thin re-exports of the `sveltenet` npm package —
-/// they exist in the app only because the Vite manifest needs stable in-project keys.
 /// </summary>
 internal static class SvelteTemplates
 {
-	public const string MountTs = """
-export { mountComponent } from 'sveltenet/client';
-""";
-
-	public const string RenderTs = """
-export { renderComponent } from 'sveltenet/server';
-""";
-
-	public static string Page(string name) => $$"""
+	public static string Page(string dataType) => $$"""
 <script lang="ts">
-	import type { {{name}}Data } from './{{name}}.types';
-
-	let { data }: { data: {{name}}Data } = $props();
+	let { data }: { data: {{dataType}} } = $props();
 </script>
 """;
 
-	public static string ComponentModelPage(string typeName, string typesImport) => $$"""
+	public static string ComponentModelPage(string typeName) => $$"""
 <script lang="ts">
-	import type { {{typeName}} } from '{{typesImport}}';
-
 	let { data }: { data: {{typeName}} } = $props();
 </script>
 """;
@@ -34,11 +20,10 @@ export { renderComponent } from 'sveltenet/server';
 	public static string ViteConfig(SvelteOptions options)
 	{
 		var plugin = "sveltenet()";
-		if (options.PagesPath != "Svelte" || options.ClientOutput != "wwwroot/client" || options.ServerOutput != "svelte-ssr")
+		if (options.ClientOutput != "wwwroot/client" || options.ServerOutput != ".svelte-net/server")
 		{
 			plugin = $$"""
 sveltenet({
-			pagesPath: '{{options.PagesPath}}',
 			clientOutDir: '{{options.ClientOutput}}',
 			serverOutDir: '{{options.ServerOutput}}',
 		})
@@ -55,16 +40,43 @@ export default defineConfig({
 """;
 	}
 
+	public static string TsConfig(SvelteOptions options) => $$"""
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "es2022"
+	},
+	"include": [
+		"{{options.PagesPath}}/**/*.js",
+		"{{options.PagesPath}}/**/*.ts",
+		"{{options.PagesPath}}/**/*.svelte",
+		".svelte-net/**/*.d.ts",
+		"vite.config.ts"
+	]
+}
+""";
+
 	public const string PackageJson = """
 {
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"build": "vite build"
+		"build": "vite build",
+		"check": "svelte-check --tsconfig ./tsconfig.json"
 	},
 	"devDependencies": {
 		"svelte": "^5.46.0",
+		"svelte-check": "^4.0.0",
 		"sveltenet": "^0.1.0",
 		"typescript": "^6.0.0",
 		"vite": "^8.0.0"

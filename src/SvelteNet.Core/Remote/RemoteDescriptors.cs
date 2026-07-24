@@ -1,17 +1,25 @@
 namespace SvelteNet.Remote;
 
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using SvelteNet.TypeGen;
 
-public sealed record RemoteParameter(string Name, Type Type);
+public sealed record RemoteParameter(
+	string Name,
+	Type Type,
+	string? TypeScriptType = null,
+	bool IsNullable = false,
+	ValidationAttribute[]? ValidationAttributes = null,
+	Type? FluentValidatorServiceType = null);
 
 public sealed record RemoteMethodDescriptor(
 	string Name,
 	RemoteKind Kind,
 	Func<object, RemoteArguments, ValueTask<object?>> Invoke,
 	Type ReturnType,
-	RemoteParameter[] Parameters);
+	RemoteParameter[] Parameters,
+	string? TypeScriptReturnType = null);
 
 public sealed record RemoteServiceDescriptor(
 	string Name,
@@ -52,8 +60,17 @@ public static class SvelteRemoteDescriptors
 				UnwrapReturnType(x.Method.ReturnType),
 				x.Method.GetParameters()
 					.Where(p => p.ParameterType != typeof(CancellationToken))
-					.Select(p => new RemoteParameter(p.Name!.ToCamelCase(), p.ParameterType))
-					.ToArray()))
+						.Select(p =>
+						{
+							var nullable = new NullabilityInfoContext().Create(p).ReadState == NullabilityState.Nullable;
+							return new RemoteParameter(
+								p.Name!.ToCamelCase(),
+								p.ParameterType,
+								p.ParameterType.TsType() + (nullable ? " | null" : ""),
+								nullable,
+								p.GetCustomAttributes<ValidationAttribute>(inherit: false).ToArray());
+						})
+						.ToArray()))
 			.ToArray();
 
 		return new RemoteServiceDescriptor(serviceType.Name, serviceType, methods, IsGenerated: false);
@@ -63,7 +80,7 @@ public static class SvelteRemoteDescriptors
 	{
 		if (type == typeof(Task) || type == typeof(ValueTask)) return typeof(void);
 		if (type.IsGenericType &&
-		    (type.GetGenericTypeDefinition() == typeof(Task<>) || type.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+			(type.GetGenericTypeDefinition() == typeof(Task<>) || type.GetGenericTypeDefinition() == typeof(ValueTask<>)))
 			return type.GetGenericArguments()[0];
 		return type;
 	}
@@ -106,13 +123,13 @@ public static class SvelteRemoteDescriptors
 		switch (result)
 		{
 			case Task task:
-			{
-				await task;
-				var type = task.GetType();
-				if (type.IsGenericType && type.GetGenericArguments()[0].Name != "VoidTaskResult")
-					return type.GetProperty(nameof(Task<object>.Result))!.GetValue(task);
-				return null;
-			}
+				{
+					await task;
+					var type = task.GetType();
+					if (type.IsGenericType && type.GetGenericArguments()[0].Name != "VoidTaskResult")
+						return type.GetProperty(nameof(Task<object>.Result))!.GetValue(task);
+					return null;
+				}
 			case ValueTask valueTask:
 				await valueTask;
 				return null;

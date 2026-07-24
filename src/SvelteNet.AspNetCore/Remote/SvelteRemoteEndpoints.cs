@@ -1,9 +1,9 @@
 namespace SvelteNet.AspNetCore.Remote;
 
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using SvelteNet.Remote;
-using System.Text.Json;
 
 internal static class SvelteRemoteEndpoints
 {
@@ -49,7 +49,10 @@ internal static class SvelteRemoteEndpoints
 			var form = await context.Request.ReadFormAsync(context.RequestAborted);
 			var args = new RemoteArguments
 			{
-				Form = form.ToDictionary(kv => kv.Key, kv => kv.Value.ToString()),
+				Form = form.ToDictionary(
+						kv => kv.Key,
+						kv => (IReadOnlyList<string>)kv.Value.Select(v => v ?? string.Empty).ToArray(),
+						StringComparer.Ordinal),
 				ValidateOnly = context.Request.Headers.ContainsKey("X-SvelteNet-Validate"),
 				CancellationToken = context.RequestAborted,
 				Validation = BuildValidation(context.RequestServices, serviceType, descriptor)
@@ -58,8 +61,9 @@ internal static class SvelteRemoteEndpoints
 			// Without JS the browser posted directly — run the mutation, then send it back.
 			if (!enhanced)
 			{
-				await Run(descriptor, instance, args);
-				return Results.Redirect(context.Request.Headers.Referer.ToString() is { Length: > 0 } referer ? referer : "/");
+				var result = await Run(descriptor, instance, args);
+				if (args.Errors is not null) return result;
+				return Results.Redirect(LocalReturnUrl(context));
 			}
 
 			return await Run(descriptor, instance, args);
@@ -72,8 +76,17 @@ internal static class SvelteRemoteEndpoints
 			return Results.NotFound();
 
 		JsonElement? body = null;
-		if (context.Request.ContentLength is > 0)
-			body = (await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)).RootElement;
+		if (context.Request.ContentLength != 0)
+		{
+			try
+			{
+				body = (await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)).RootElement;
+			}
+			catch (JsonException)
+			{
+				return Results.Problem(detail: "The JSON request body is malformed.", statusCode: StatusCodes.Status400BadRequest);
+			}
+		}
 
 		return await Run(commandDescriptor, commandInstance, new RemoteArguments
 		{
@@ -92,9 +105,7 @@ internal static class SvelteRemoteEndpoints
 		}
 		catch (SvelteValidationException invalid)
 		{
-			foreach (var (field, messages) in invalid.Errors)
-			foreach (var message in messages)
-				args.AddError(field.Length == 0 ? "" : TypeGen.StringExtensions.ToCamelCase(field), message);
+			ApplyValidationException(args, invalid);
 		}
 
 		// RFC 9457 problem details with the standard ASP.NET `errors` member
@@ -105,6 +116,13 @@ internal static class SvelteRemoteEndpoints
 			return Results.NoContent();
 
 		return result is null ? Results.NoContent() : Results.Json(result, SvelteJson.Options);
+	}
+
+	internal static void ApplyValidationException(RemoteArguments args, SvelteValidationException invalid)
+	{
+		foreach (var (field, messages) in invalid.Errors)
+			foreach (var message in messages)
+				args.AddError(field.Length == 0 ? "" : TypeGen.StringExtensions.ToCamelCase(field), message);
 	}
 
 	private static bool TryResolve(HttpContext context, string service, string method, RemoteKind kind, out Type serviceType, out RemoteMethodDescriptor descriptor, out object instance)
@@ -138,8 +156,22 @@ internal static class SvelteRemoteEndpoints
 	private static bool IsSameOrigin(HttpContext context)
 	{
 		var origin = context.Request.Headers.Origin.ToString();
-		if (origin.Length == 0) return true;
-		return Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
-		       string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase);
+		if (origin.Length > 0) return IsRequestOrigin(context, origin);
+
+		var referer = context.Request.Headers.Referer.ToString();
+		return referer.Length > 0 && IsRequestOrigin(context, referer);
+	}
+
+	private static bool IsRequestOrigin(HttpContext context, string value) =>
+		Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+		string.Equals(uri.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+		string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase);
+
+	private static string LocalReturnUrl(HttpContext context)
+	{
+		var referer = context.Request.Headers.Referer.ToString();
+		if (!IsRequestOrigin(context, referer) || !Uri.TryCreate(referer, UriKind.Absolute, out var uri))
+			return "/";
+		return uri.PathAndQuery.Length > 0 ? uri.PathAndQuery : "/";
 	}
 }

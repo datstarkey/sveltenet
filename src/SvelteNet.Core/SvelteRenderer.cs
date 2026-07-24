@@ -2,16 +2,17 @@ namespace SvelteNet;
 
 using System.Collections.Concurrent;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 public class SvelteRenderer
 {
 	private readonly SvelteOptions _options;
-	private readonly ISvelteSsrEngine _ssrEngine;
+	private readonly ISvelteSsrEngine? _ssrEngine;
 	private readonly ConcurrentDictionary<RenderType, ViteManifest> _manifests = new();
 
-	public SvelteRenderer(SvelteOptions options, ISvelteSsrEngine ssrEngine)
+	public SvelteRenderer(SvelteOptions options, ISvelteSsrEngine? ssrEngine = null)
 	{
 		_options = options;
 		_ssrEngine = ssrEngine;
@@ -36,15 +37,18 @@ public class SvelteRenderer
 		var moduleKey = $"{_options.PagesPath}/{name}.svelte";
 		var elementId = component.ElementId ?? "svelte-" + name.Replace('/', '-').ToLowerInvariant();
 		var propsJson = component.Props is null ? null : JsonSerializer.Serialize(component.Props, JsonOptions);
+		var encodedElementId = HtmlEncoder.Default.Encode(elementId);
 
 		// SSR only runs against the built server bundle, so it is skipped in dev.
-		var ssrEnabled = (component.Ssr ?? _options.EnableSsr) && !_options.IsDev;
+		var ssrEnabled = _ssrEngine is not null
+			&& (component.Ssr ?? _options.EnableSsr)
+			&& !_options.IsDev;
 		var csrEnabled = component.Csr ?? _options.EnableCsr;
 
-		var ssr = ssrEnabled ? RenderServer(moduleKey, propsJson) : null;
+		var ssr = ssrEnabled ? RenderServer(moduleKey, propsJson, component.CancellationToken) : null;
 
 		var html = new StringBuilder();
-		html.Append($"<div id=\"{elementId}\">");
+		html.Append($"<div id=\"{encodedElementId}\">");
 		if (ssr is not null) html.Append(ssr.Body);
 		html.Append("</div>");
 		if (csrEnabled) html.Append(BuildClientScript(moduleKey, elementId, propsJson, hydrate: ssr is not null));
@@ -56,7 +60,7 @@ public class SvelteRenderer
 		return new SvelteRenderResult { Html = html.ToString(), Head = head.ToString() };
 	}
 
-	private SsrResult? RenderServer(string moduleKey, string? propsJson)
+	private SsrResult? RenderServer(string moduleKey, string? propsJson, CancellationToken cancellationToken)
 	{
 		var manifest = GetManifest(RenderType.Ssr);
 		var componentChunk = FindChunk(manifest, moduleKey)
@@ -64,7 +68,7 @@ public class SvelteRenderer
 		var renderChunk = FindChunk(manifest, _options.RenderModule)
 			?? throw new InvalidOperationException($"'{_options.RenderModule}' not found in the SSR manifest. Ensure it is included in the Vite SSR build inputs.");
 
-		return _ssrEngine.Render(componentChunk.File!, renderChunk.File!, propsJson);
+		return _ssrEngine!.Render(componentChunk.File!, renderChunk.File!, propsJson, cancellationToken);
 	}
 
 	private string BuildClientScript(string moduleKey, string elementId, string? propsJson, bool hydrate)
@@ -76,7 +80,7 @@ public class SvelteRenderer
 		{
 			var dev = _options.DevServerUrl.TrimEnd('/');
 			viteClient = $"import \"{dev}/@vite/client\";\n\t";
-			mountSrc = $"{dev}/{_options.MountModule}";
+			mountSrc = $"{dev}/@id/sveltenet/client";
 			componentSrc = $"{dev}/{moduleKey}";
 		}
 		else
@@ -92,6 +96,7 @@ public class SvelteRenderer
 		}
 
 		var props = propsJson is null ? string.Empty : $",\n\t\tprops: {propsJson}";
+		var elementIdJson = JsonSerializer.Serialize(elementId);
 
 		return $$"""
 
@@ -99,7 +104,7 @@ public class SvelteRenderer
 	{{viteClient}}import { mountComponent } from "{{mountSrc}}";
 	import App from "{{componentSrc}}";
 	mountComponent(App, {
-		target: document.getElementById("{{elementId}}"),
+		target: document.getElementById({{elementIdJson}}),
 		hydrate: {{(hydrate ? "true" : "false")}}{{props}}
 	});
 </script>
@@ -131,7 +136,9 @@ public class SvelteRenderer
 	private static ViteChunk? FindChunk(ViteManifest manifest, string key)
 	{
 		if (manifest.TryGetValue(key, out var chunk)) return chunk;
-		return manifest.FirstOrDefault(k => k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
+		return manifest.FirstOrDefault(k =>
+			k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(k.Value.Name, key, StringComparison.OrdinalIgnoreCase)).Value;
 	}
 
 	private ViteManifest GetManifest(RenderType type)

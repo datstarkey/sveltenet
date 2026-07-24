@@ -1,9 +1,10 @@
 namespace RemoteFunctions.Pages;
 
-using RemoteFunctions.Services;
+using RemoteFunctions.Features.Todos;
 using SvelteNet;
 using SvelteNet.AspNetCore;
 
+[SvelteComponent("Todos/Stats")]
 public class StatsModel(TodoStore store) : SveltePage
 {
 	[SvelteProp] public int Total { get; set; }

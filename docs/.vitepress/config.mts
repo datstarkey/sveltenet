@@ -4,7 +4,7 @@ export default defineConfig({
 	// Served from https://datstarkey.github.io/sveltenet/
 	base: '/sveltenet/',
 	title: 'SvelteNet',
-	description: 'Svelte 5 islands for ASP.NET — typed props, SvelteKit-style forms and remote functions, Jint-based SSR.',
+	description: 'Svelte 5 islands for ASP.NET — typed props, remote functions, and optional Jint, Node.js, Bun, or custom SSR.',
 	lang: 'en-US',
 	lastUpdated: true,
 	markdown: {
@@ -24,6 +24,7 @@ export default defineConfig({
 					{ text: 'Forms & enhance()', link: '/forms' },
 					{ text: 'MVC controllers', link: '/mvc' },
 					{ text: 'Remote functions', link: '/remote-functions' },
+					{ text: 'SSR renderers', link: '/ssr' },
 					{ text: 'Options', link: '/options' },
 				],
 			},

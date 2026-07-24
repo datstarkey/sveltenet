@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"lib": ["es2022", "dom", "dom.iterable"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"target": "es2022"
+	},
+	"include": [
+		"src/**/*.js",
+		"src/**/*.d.ts",
+		"vitest.config.js"
+	]
+}

@@ -1,5 +1,6 @@
 namespace SvelteNet.AspNetCore.Tests;
 
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,7 +8,6 @@ using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using SvelteNet.AspNetCore.Tests.Fixtures.Pages;
-using System.Text.Json;
 
 public class EnhancedResultTests
 {
@@ -18,7 +18,7 @@ public class EnhancedResultTests
 
 	private sealed class NoopSsrEngine : ISvelteSsrEngine
 	{
-		public SsrResult Render(string componentModule, string renderModule, string? propsJson) => new();
+		public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default) => new();
 	}
 
 	private sealed class FakeUrlHelper : IUrlHelper

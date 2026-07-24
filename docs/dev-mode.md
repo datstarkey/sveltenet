@@ -5,7 +5,7 @@ In Development the renderer emits a different script — instead of hashed produ
 ```html
 <script type="module">
     import "http://localhost:5173/@vite/client";        <!-- HMR runtime + websocket -->
-    import { mountComponent } from "http://localhost:5173/Svelte/mount.ts";
+    import { mountComponent } from "http://localhost:5173/@id/sveltenet/client";
     import App from "http://localhost:5173/Svelte/Index.svelte";
     mountComponent(App, { target: ..., hydrate: false, props: {...} });
 </script>
@@ -14,13 +14,14 @@ In Development the renderer emits a different script — instead of hashed produ
 ASP.NET serves the page and the props; Vite serves the components with transform-on-demand and pushes hot updates over its websocket. The daily workflow is two terminals:
 
 ```sh
-dotnet watch run     # C# hot reload; each rebuild regenerates .types.ts (MSBuild target)
+dotnet watch run     # C# hot reload; each rebuild regenerates .svelte-net/types
 npm run dev          # Svelte HMR — component edits appear in ~1s, no page reload
 ```
 
 Caveats to know about:
 
-- **SSR is skipped in dev** — the island mounts client-side (`mount`, not `hydrate`). Real SSR output only appears in a production run.
+- **SSR is skipped in dev** — the island mounts client-side (`mount`, not `hydrate`).
+  An explicitly registered renderer is used only in a production run.
 - **Component `$state` resets on hot update** — vite-plugin-svelte re-instantiates the component. Server-provided `data` is unaffected.
 - **Changing a `[SvelteProp]`** flows into the generated TypeScript on the next build (`dotnet watch` rebuilds for you).
 - Vite allows localhost origins by default, so the cross-origin module imports need no CORS config.

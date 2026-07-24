@@ -8,6 +8,9 @@ public class ViteManifest : Dictionary<string, ViteChunk>
 
 public class ViteChunk
 {
+	[JsonPropertyName("name")]
+	public string? Name { get; set; }
+
 	[JsonPropertyName("file")]
 	public string? File { get; set; }
 

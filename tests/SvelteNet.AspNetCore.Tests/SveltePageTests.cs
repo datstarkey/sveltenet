@@ -12,7 +12,7 @@ public class SveltePageTests
 {
 	private sealed class NoopSsrEngine : ISvelteSsrEngine
 	{
-		public SsrResult Render(string componentModule, string renderModule, string? propsJson) => new();
+		public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default) => new();
 	}
 
 	private static T CreatePage<T>(string viewEnginePath) where T : SveltePage, new()

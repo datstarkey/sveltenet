@@ -4,8 +4,7 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 
 ## Next
 
-- **Publish packages** — `SvelteNet.Core` + `SvelteNet.AspNetCore` + `SvelteNet.FluentValidation` to NuGet (bundling `SvelteNet.Generators` as an analyzer and `SvelteNet.Build.targets` in the package `build/` folder so consumers get build-time type generation automatically), and the `sveltenet` package to npm. Includes a versioning/release flow.
-- **Test CI** — the docs deploy is the only workflow; PRs (including Dependabot's) should run `dotnet test` + the JS tests + sample vite builds.
+- **Publish packages** — publish `SvelteNet.Core`, `SvelteNet.AspNetCore`, and `SvelteNet.FluentValidation` to NuGet, plus `sveltenet` to npm. Packaging already bundles the analyzer and build-time generator; remaining work is versioning and the release flow.
 
 ## Later
 
@@ -16,13 +15,17 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 
 ## Shipped
 
-- Svelte 5 / ASP.NET 10 rewrite: typed `[SvelteProp]` props, TS generation, Jint SSR with engine pooling
+- Svelte 5 / ASP.NET 10 rewrite: typed `[SvelteProp]` props and generated TypeScript
+- Opt-in SSR builder: client-only by default, pooled in-process Jint, bundled Node.js/Bun CLI renderers, and custom renderer hooks
 - One-command Vite build (client + SSR via the Environments API), dev mode with HMR
 - SvelteKit-style forms with `enhance()`
 - `[SvelteComponent]` typed MVC rendering
 - Remote functions (`[Query]`/`[Command]`/`[Form]`) with generated typed client and source-generated, descriptor-based dispatch *and* registration (no runtime reflection)
 - Experimental async: awaited queries in components, SSR via the in-process fetch bridge, `hydratable` head stash with zero-refetch hydration, reactive-thenable refresh semantics
 - Build-time TypeScript generation (`SvelteNet.Build` MSBuild target)
+- SvelteKit-style `.svelte-net/types` declaration tree and private `.svelte-net/server` output
+- Project-wide Svelte discovery with Razor/MVC/vertical-slice colocation and one generated remote class per C# service
+- PR CI covering .NET tests/format/pack, JS Node + browser tests, sample typechecks/builds, and docs
 - Samples split by concept (`TodoApp`, `RemoteFunctions`, `MvcHello`), all integration-tested
 - VitePress docs site deployed to GitHub Pages; Dependabot across actions/bun/NuGet
 - Validation errors as RFC 9457 problem details (`application/problem+json`, ASP.NET `errors` member) across remote functions, the SSR bridge, and enhanced page posts

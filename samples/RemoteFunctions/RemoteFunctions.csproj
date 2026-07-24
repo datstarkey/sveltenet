@@ -3,6 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <IsPackable>false</IsPackable>
+        <SvelteNetPagesPath>Features</SvelteNetPagesPath>
     </PropertyGroup>
 
     <ItemGroup>
@@ -11,7 +12,7 @@
         <ProjectReference Include="..\..\src\SvelteNet.Generators\SvelteNet.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
-    <!-- Build-time TypeScript generation: dotnet build keeps Svelte/ types in sync -->
+    <!-- Build-time TypeScript generation keeps the vertical feature slice in sync. -->
     <ItemGroup>
         <ProjectReference Include="..\..\src\SvelteNet.Build\SvelteNet.Build.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>

@@ -1,10 +1,10 @@
 namespace SvelteNet.AspNetCore.Tests;
 
+using System.Text.Json;
 using global::FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using SvelteNet.FluentValidation;
 using SvelteNet.Remote;
-using System.Text.Json;
 
 /// <summary>
 /// The FluentValidation adapter: IValidator&lt;T&gt;s resolved from DI run over bound

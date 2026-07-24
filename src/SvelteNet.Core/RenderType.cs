@@ -1,4 +1,4 @@
-﻿namespace SvelteNet;
+namespace SvelteNet;
 
 public enum RenderType
 {
