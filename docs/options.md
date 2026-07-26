@@ -45,6 +45,25 @@ For a legacy app that deliberately omits the analyzer, set
 `EnableReflectionFallback = true`. Generated and fallback dispatchers share the same
 binding and validation pipeline, but the fallback is not the default.
 
+## Generated type names
+
+Model interfaces are emitted as ambient globals, so their names have to be unique across
+the application and must not shadow anything in `lib.dom.d.ts`. The short CLR name is used
+where that is safe; where it is not, the name is qualified with namespace segments:
+
+```csharp
+namespace App.Orders  { public class Item { } }   // → OrdersItem
+namespace App.Catalog { public class Item { } }   // → CatalogItem
+namespace App.Storage { public class File { } }   // → StorageFile (File is a DOM global)
+```
+
+`[SvelteType]` overrides the choice outright:
+
+```csharp
+[SvelteType("CatalogEntry")]
+public class Item { }
+```
+
 ## SSR renderer options
 
 `AddSvelteNet()` is client-only. Renderer-specific settings live with the renderer

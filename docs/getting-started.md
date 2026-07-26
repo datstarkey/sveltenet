@@ -33,6 +33,10 @@ public class IndexModel : SveltePage
 @Model.Svelte()
 ```
 
+`SveltePage` renders in the page filter, before the view runs, so these stay synchronous
+even when the server render awaits remote queries. `@await Model.SvelteAsync()` renders on
+demand if you bypass the normal handler pipeline.
+
 `dotnet build` generates the frontend types (the `SvelteNet.Build.targets` MSBuild target runs the scaffolder against the built assembly — no app run needed, and `dotnet watch` regenerates on every rebuild):
 
 ```
