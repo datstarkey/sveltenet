@@ -26,6 +26,55 @@ public class SvelteScaffolderTests : IDisposable
 	private string ReadGeneratedFile(params string[] segments) =>
 		File.ReadAllText(Path.Combine([_root, ".svelte-net", "types", .. segments]));
 
+	/// <summary>
+	/// Generated interfaces are ambient globals, so names must be unique across the whole
+	/// app and must not shadow lib.dom.d.ts. Two CLR types called Item used to emit two
+	/// `interface Item` declarations into one block; a model called File used to replace
+	/// the DOM's File everywhere.
+	/// </summary>
+	[Fact]
+	public void Colliding_and_dom_shadowing_names_are_qualified()
+	{
+		SvelteScaffolder.Run(_options, [], [], [typeof(Fixtures.Naming.NamingApi)]);
+
+		var types = ReadGeneratedFile("models.d.ts");
+		Assert.Contains("interface OrdersItem", types);
+		Assert.Contains("interface CatalogItem", types);
+		Assert.Contains("interface OrdersFile", types);
+		Assert.DoesNotContain("interface Item ", types);
+		Assert.DoesNotContain("interface File ", types);
+		// [SvelteType("CatalogEvent")] wins outright.
+		Assert.Contains("interface CatalogEvent", types);
+		Assert.DoesNotContain("interface Event ", types);
+	}
+
+	/// <summary>The typed client has to use the same resolved names, or it will not compile.</summary>
+	[Fact]
+	public void Remote_clients_use_the_resolved_names()
+	{
+		SvelteScaffolder.Run(_options, [], [], [typeof(Fixtures.Naming.NamingApi)]);
+
+		var client = ReadSvelteFile("NamingApi.remote.ts");
+		Assert.Contains("query<OrdersItem>('NamingApi/GetOrderItem')", client);
+		Assert.Contains("query<CatalogItem>('NamingApi/GetCatalogItem')", client);
+		Assert.Contains("query<OrdersFile>('NamingApi/GetFile')", client);
+		Assert.Contains("query<CatalogEvent>('NamingApi/GetEvent')", client);
+	}
+
+	/// <summary>Nothing may leak the internal placeholder form into user-facing output.</summary>
+	[Fact]
+	public void No_placeholder_names_survive_into_generated_output()
+	{
+		Run();
+		SvelteScaffolder.Run(_options, [], [], [typeof(Fixtures.Naming.NamingApi)]);
+
+		foreach (var file in Directory.GetFiles(_root, "*.ts", SearchOption.AllDirectories))
+		{
+			var text = File.ReadAllText(file);
+			Assert.DoesNotContain("SvelteNet_AspNetCore_Tests", text);
+		}
+	}
+
 	[Fact]
 	public void Generates_shared_types_for_all_referenced_models()
 	{

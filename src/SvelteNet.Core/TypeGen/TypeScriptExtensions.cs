@@ -78,7 +78,14 @@ export interface {{exportType.TsType()}} {
 		if (stripped.IsSystemType())
 			return "any";
 
-		return stripped.Name.RemoveTypeArity();
+		// An open type parameter is already its own TypeScript name — qualifying `T` with
+		// the declaring type's namespace would rename it out of the declaration.
+		if (stripped.IsGenericParameter)
+			return stripped.Name;
+
+		// A namespace-qualified stand-in; the scaffolder resolves it to the final name
+		// once it can see every application assembly. See TypeScriptNaming.
+		return TypeScriptNaming.Placeholder(stripped);
 	}
 
 	private static bool IsAlwaysIgnored(PropertyInfo property)

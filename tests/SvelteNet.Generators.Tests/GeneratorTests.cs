@@ -49,7 +49,9 @@ public class GeneratorTests
 		var result = Run(new SvelteMetadataGenerator(), Compilation(source));
 		var generated = Assert.Single(result.Results).GeneratedSources.Single().SourceText.ToString();
 
-		Assert.Contains("\"Payload | null\"", generated);
+		// Type names are namespace-qualified placeholders here; the scaffolder resolves
+		// them once it can see every assembly (see TypeScriptNaming).
+		Assert.Contains("\"Fixture_Pages_Payload | null\"", generated);
 		Assert.Contains("\"Features/Profile/Index\"", generated);
 		Assert.Contains("\\\"display-name\\\": string;", generated);
 		Assert.Contains("data: string;", generated);

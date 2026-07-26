@@ -123,7 +123,10 @@ public class SvelteJsonTests
 	[Fact]
 	public void Enum_keyed_dictionaries_generate_a_partial_record()
 	{
-		Assert.Equal("Partial<Record<Tier, number>>", typeof(Dictionary<Tier, int>).TsType());
+		var names = TypeScriptNaming.Resolve([TypeScriptNaming.Placeholder(typeof(Tier))]);
+		Assert.Equal(
+			"Partial<Record<Tier, number>>",
+			TypeScriptNaming.Substitute(typeof(Dictionary<Tier, int>).TsType(), names));
 	}
 
 	[Fact]
