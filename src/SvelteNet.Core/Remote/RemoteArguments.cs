@@ -117,7 +117,7 @@ public sealed class RemoteArguments
 				"off" or "false" or "0" => false,
 				_ => throw new FormatException("Invalid boolean form value.")
 			};
-		if (type.IsEnum) return Enum.Parse(type, value, ignoreCase: true);
+		if (type.IsEnum) return ConvertEnum(value, type);
 
 		try
 		{
@@ -125,8 +125,38 @@ public sealed class RemoteArguments
 		}
 		catch (JsonException)
 		{
-			// Not raw JSON — treat as a JSON string (dates, guids, ...)
-			return JsonSerializer.Deserialize($"\"{value}\"", type, SvelteJson.Options);
+			// Not raw JSON — treat as a JSON string (dates, guids, ...). Serializing the
+			// value produces correctly escaped JSON; string concatenation would break on
+			// any quote or backslash the field happens to contain.
+			return JsonSerializer.Deserialize(JsonSerializer.Serialize(value), type, SvelteJson.Options);
 		}
+	}
+
+	/// <summary>
+	/// Binds an enum from a form field. Goes through the serializer so form posts accept
+	/// exactly the names JSON does (camelCase, per JsonStringEnumConverter) rather than a
+	/// second, differently-spelled vocabulary; the .NET member name is still accepted for
+	/// hand-written forms. Undefined values are rejected — Enum.Parse would happily produce
+	/// (Priority)999 from the string "999".
+	/// </summary>
+	private static object ConvertEnum(string value, Type type)
+	{
+		object? parsed = null;
+		try
+		{
+			parsed = JsonSerializer.Deserialize(JsonSerializer.Serialize(value), type, SvelteJson.Options);
+		}
+		catch (JsonException)
+		{
+			// Fall through to the CLR member names below.
+		}
+
+		if (parsed is null && !Enum.TryParse(type, value, ignoreCase: true, out parsed))
+			throw new FormatException($"'{value}' is not a valid {type.Name} value.");
+
+		if (!Enum.IsDefined(type, parsed!))
+			throw new FormatException($"'{value}' is not a valid {type.Name} value.");
+
+		return parsed!;
 	}
 }

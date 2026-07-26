@@ -161,7 +161,7 @@ public static class SvelteRemoteDescriptors
 
 		try
 		{
-			return await UnwrapAsync(method.Invoke(service, values));
+			return await UnwrapAsync(method.Invoke(service, values), method.ReturnType);
 		}
 		catch (System.Reflection.TargetInvocationException e) when (e.InnerException is not null)
 		{
@@ -169,29 +169,44 @@ public static class SvelteRemoteDescriptors
 		}
 	}
 
-	private static async Task<object?> UnwrapAsync(object? result)
+	/// <summary>
+	/// Awaits a handler's return value and produces the payload to serialize.
+	/// </summary>
+	/// <remarks>
+	/// Driven by the method's <em>declared</em> return type, never the runtime type of the
+	/// object. An `async Task` method really does hand back a Task&lt;VoidTaskResult&gt; at
+	/// runtime, so inspecting the instance means either reading a phantom result or
+	/// recognising an internal BCL type by name. The declaration is unambiguous.
+	/// </remarks>
+	private static async Task<object?> UnwrapAsync(object? result, Type declaredReturnType)
 	{
-		switch (result)
+		if (declaredReturnType == typeof(Task) || declaredReturnType == typeof(ValueTask))
 		{
-			case Task task:
-				{
-					await task;
-					var type = task.GetType();
-					if (type.IsGenericType && type.GetGenericArguments()[0].Name != "VoidTaskResult")
-						return type.GetProperty(nameof(Task<object>.Result))!.GetValue(task);
-					return null;
-				}
-			case ValueTask valueTask:
-				await valueTask;
-				return null;
+			switch (result)
+			{
+				case Task task: await task; break;
+				case ValueTask valueTask: await valueTask; break;
+			}
+
+			return null;
 		}
 
-		var resultType = result?.GetType();
-		if (resultType?.IsGenericType == true && resultType.GetGenericTypeDefinition() == typeof(ValueTask<>))
+		if (declaredReturnType.IsGenericType)
 		{
-			var task = (Task)resultType.GetMethod(nameof(ValueTask<object>.AsTask))!.Invoke(result, null)!;
-			await task;
-			return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task);
+			var definition = declaredReturnType.GetGenericTypeDefinition();
+			if (definition == typeof(Task<>))
+			{
+				var task = (Task)result!;
+				await task;
+				return declaredReturnType.GetProperty(nameof(Task<object>.Result))!.GetValue(task);
+			}
+
+			if (definition == typeof(ValueTask<>))
+			{
+				var task = (Task)declaredReturnType.GetMethod(nameof(ValueTask<object>.AsTask))!.Invoke(result, null)!;
+				await task;
+				return task.GetType().GetProperty(nameof(Task<object>.Result))!.GetValue(task);
+			}
 		}
 
 		return result;
