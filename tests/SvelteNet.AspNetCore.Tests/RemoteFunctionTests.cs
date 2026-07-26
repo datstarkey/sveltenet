@@ -89,6 +89,43 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		Assert.True(json.TryGetProperty("byPriority", out _));
 	}
 
+	/// <summary>
+	/// The X-SvelteNet header is only a CSRF defence while no CORS policy lets a foreign
+	/// origin send it, and AllowAnyHeader()/AllowAnyOrigin() is common. A browser always
+	/// attaches Origin cross-origin, so a foreign Origin is refused regardless.
+	/// </summary>
+	[Fact]
+	public async Task Commands_reject_a_foreign_origin_even_with_the_header()
+	{
+		var request = Command("TodoApi/ToggleTodo", new { id = 1 });
+		request.Headers.Add("Origin", "https://evil.example");
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+	}
+
+	[Fact]
+	public async Task Commands_accept_their_own_origin()
+	{
+		var client = _factory.CreateClient();
+		var request = Command("TodoApi/ToggleTodo", new { id = 1 });
+		request.Headers.Add("Origin", client.BaseAddress!.GetLeftPart(UriPartial.Authority));
+
+		var response = await client.SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+	}
+
+	/// <summary>A caller with no Origin is not a browser, so it cannot be CSRF'd.</summary>
+	[Fact]
+	public async Task Commands_without_an_origin_still_work()
+	{
+		var response = await _factory.CreateClient().SendAsync(Command("TodoApi/ToggleTodo", new { id = 1 }));
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+	}
+
 	[Fact]
 	public async Task Queries_reject_other_kinds_and_posts()
 	{

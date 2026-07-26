@@ -3,6 +3,7 @@ namespace SvelteNet.AspNetCore;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Dev;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -40,6 +41,14 @@ public static class SvelteNetExtensions
 		services.AddSingleton(options);
 		services.AddHttpContextAccessor();
 		services.AddSingleton<SvelteRenderer>();
+
+		// Razor Pages validates antiforgery on POST by default, but only reads the token
+		// from a form field unless a header name is configured — and it configures none.
+		// enhance() sends the header so users don't have to hand-add a hidden input to
+		// every form. An explicit app setting is left alone.
+		services.AddAntiforgery();
+		services.Configure<AntiforgeryOptions>(antiforgery =>
+			antiforgery.HeaderName ??= "RequestVerificationToken");
 
 		// BYOV: DataAnnotations run on remote-function arguments by default; register
 		// additional ISvelteRemoteValidator implementations for FluentValidation etc.

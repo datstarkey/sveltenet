@@ -67,6 +67,14 @@ internal static class SvelteRemoteEndpoints
 		if (!enhanced)
 			return Results.Problem(detail: "Missing X-SvelteNet header.", statusCode: StatusCodes.Status400BadRequest);
 
+		// The X-SvelteNet header alone is a CSRF defence only while no CORS policy lets a
+		// foreign origin send it. AllowAnyHeader()/AllowAnyOrigin() is common enough that
+		// the header cannot be the only check: a browser always attaches Origin to a
+		// cross-origin request, so a present-but-foreign Origin is rejected outright.
+		// Absent Origin means a non-browser caller, which cannot be CSRF'd.
+		if (!IsOriginAllowed(context))
+			return Results.Problem(detail: "Cross-origin request rejected.", statusCode: StatusCodes.Status400BadRequest);
+
 		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandServiceType, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
 
@@ -159,6 +167,17 @@ internal static class SvelteRemoteEndpoints
 			var context = new RemoteValidationContext(serviceType, method, args);
 			foreach (var validator in validators) await validator.ValidateAsync(context);
 		};
+	}
+
+	/// <summary>
+	/// True unless the request carries an Origin that is not this application's. A missing
+	/// Origin is allowed — only browsers set it, and only a browser can be made to forge a
+	/// request with the user's cookies.
+	/// </summary>
+	private static bool IsOriginAllowed(HttpContext context)
+	{
+		var origin = context.Request.Headers.Origin.ToString();
+		return origin.Length == 0 || IsRequestOrigin(context, origin);
 	}
 
 	private static bool IsSameOrigin(HttpContext context)

@@ -23,6 +23,14 @@ export interface EnhanceOptions<TData = unknown> {
 	onError?: (error: unknown) => void;
 	/** Reset the form after a successful (redirecting) submit. @default true */
 	reset?: boolean;
+	/**
+	 * Antiforgery token, sent as the RequestVerificationToken header. Every page's data
+	 * prop carries one as `antiforgeryToken`. Pass a function when the token comes from
+	 * reactive state — it is read at submit time, so it cannot go stale after an update.
+	 * Omit it only when the form already renders a hidden `__RequestVerificationToken`
+	 * input, which is picked up automatically.
+	 */
+	token?: string | (() => string | undefined);
 }
 
 /** Attachment factory: `<form method="post" {@attach enhance({ onUpdate: ... })}>` */

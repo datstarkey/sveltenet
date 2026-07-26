@@ -12,17 +12,34 @@ Without JavaScript, forms are plain POSTs with full page reloads. Attach `enhanc
     // Writable $derived: tracks the server prop, assignable from enhanced responses.
     let data = $derived(serverData);
 
-    const applyUpdate = enhance({ onUpdate: (d: IndexData) => (data = d) });
+    const applyUpdate = enhance({
+        // A getter: `data` is replaced by each enhanced response.
+        token: () => data.antiforgeryToken,
+        onUpdate: (d: IndexData) => (data = d),
+    });
 </script>
 
 <form method="post" {@attach applyUpdate}>
-    <input type="hidden" name="__RequestVerificationToken" value={data.antiforgeryToken} />
     <input name="NewLabel" />
     <button>Add</button>
 </form>
 ```
 
-How it works: `enhance` submits with an `X-SvelteNet` header. `SveltePage` answers enhanced requests with JSON instead of HTML:
+## Antiforgery
+
+Razor Pages validates an antiforgery token on every POST. Pass `token` to `enhance` and
+it is sent as the `RequestVerificationToken` header, so no form needs a hidden input.
+`AddSvelteNet()` configures `AntiforgeryOptions.HeaderName` for this (ASP.NET sets none
+by default, and would otherwise reject the post); an explicit app setting is left alone.
+
+A form that already renders a hidden `__RequestVerificationToken` input — server-rendered
+markup, or an `asp-antiforgery` tag helper — works with no `token` at all: `enhance` picks
+the value up from the form. Concurrent submits of the same form are ignored while one is
+in flight, so a double-click cannot post a mutation twice.
+
+## How it works
+
+`enhance` submits with an `X-SvelteNet` header. `SveltePage` answers enhanced requests with JSON instead of HTML:
 
 - Handler returns `Page()` with valid model state → the fresh props bag (`{ data }`).
 - Handler returns `Page()` with **invalid** model state → `400 application/problem+json`: an RFC 9457 problem details with the `errors` member, plus a `data` extension member carrying the fresh props — `onUpdate` still fires, and the island reads the errors from `data.problem`. Any problem-details-aware client parses the same response.

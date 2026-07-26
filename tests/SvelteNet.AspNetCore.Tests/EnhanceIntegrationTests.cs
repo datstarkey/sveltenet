@@ -47,6 +47,47 @@ public class EnhanceIntegrationTests : IClassFixture<TodoAppFactory>
 		return request;
 	}
 
+	/// <summary>
+	/// enhance() sends the token as a header rather than a hidden input, so users don't
+	/// have to hand-add one to every form. That only works because AddSvelteNet gives
+	/// AntiforgeryOptions a HeaderName — ASP.NET configures none by default and would
+	/// silently reject the post.
+	/// </summary>
+	[Fact]
+	public async Task The_antiforgery_token_is_accepted_as_a_header()
+	{
+		var client = CreateClient();
+		var (_, token) = await GetData(client);
+
+		var request = Enhanced(HttpMethod.Post, "/");
+		request.Headers.Add("RequestVerificationToken", token);
+		request.Content = new FormUrlEncodedContent([
+			new KeyValuePair<string, string>("NewLabel", "added via header token"),
+			new KeyValuePair<string, string>("NewPriority", "High")
+		]);
+
+		var response = await client.SendAsync(request);
+
+		Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+	}
+
+	[Fact]
+	public async Task Posts_without_any_antiforgery_token_are_still_rejected()
+	{
+		var client = CreateClient();
+		await GetData(client);
+
+		var request = Enhanced(HttpMethod.Post, "/");
+		request.Content = new FormUrlEncodedContent([
+			new KeyValuePair<string, string>("NewLabel", "no token"),
+			new KeyValuePair<string, string>("NewPriority", "High")
+		]);
+
+		var response = await client.SendAsync(request);
+
+		Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+	}
+
 	[Fact]
 	public async Task Enhanced_get_returns_the_data_prop_as_json()
 	{

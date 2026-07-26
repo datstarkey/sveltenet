@@ -7,7 +7,13 @@
 	// responses can assign fresh data without a page reload.
 	let data = $derived(serverData);
 
-	const applyUpdate = enhance({ onUpdate: (d: IndexData) => (data = d) });
+	// enhance() sends the antiforgery token as a header, so no form needs a hidden input.
+	const applyUpdate = enhance({
+		// A getter, not a value: `data` is replaced by each enhanced response, so a
+		// token captured up front would go stale.
+		token: () => data.antiforgeryToken,
+		onUpdate: (d: IndexData) => (data = d),
+	});
 
 	// Server state, client-side view logic — this is the island pattern.
 	let filter: 'all' | 'active' | 'done' = $state('all');
@@ -30,7 +36,6 @@
 	{/each}
 
 	<form method="post" {@attach applyUpdate}>
-		<input type="hidden" name="__RequestVerificationToken" value={data.antiforgeryToken} />
 		<input name="NewLabel" placeholder="What needs doing?" />
 		<select name="NewPriority">
 			<option>Low</option>
@@ -52,7 +57,6 @@
 		{#each visible as todo (todo.id)}
 			<li class={{ done: todo.done }}>
 				<form method="post" action="?handler=toggle" {@attach applyUpdate}>
-					<input type="hidden" name="__RequestVerificationToken" value={data.antiforgeryToken} />
 					<input type="hidden" name="id" value={todo.id} />
 					<button type="submit" aria-label="toggle {todo.label}">{todo.done ? '☑' : '☐'}</button>
 				</form>
