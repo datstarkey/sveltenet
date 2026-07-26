@@ -47,10 +47,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun audit
-      # chromium-headless-shell is a separate download from chromium, and Vitest's
-      # browser mode launches the shell. Installing only chromium leaves the shell
-      # missing and every browser test fails to launch.
-      - run: bunx playwright install --with-deps chromium chromium-headless-shell
+      # Run the workspace's own playwright, not bunx. bunx resolves and downloads its
+      # own copy, then installs browsers for *that* version — leaving the pinned
+      # version's browser build absent, so every browser test fails to launch. It also
+      # rewrites bun.lock as a side effect.
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+        working-directory: packages/sveltenet
       - run: bun run test
         working-directory: packages/sveltenet
       - run: bun run check
