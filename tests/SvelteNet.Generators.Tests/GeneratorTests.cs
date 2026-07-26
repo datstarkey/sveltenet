@@ -99,6 +99,61 @@ public class GeneratorTests
 		Assert.Equal(first.SourceText.ToString(), second.SourceText.ToString());
 	}
 
+	/// <summary>
+	/// [Authorize] has to reach the descriptor, because that is the single source both the
+	/// HTTP endpoints and the SSR bridge read. If the generator drops it, a protected query
+	/// silently becomes public during server rendering.
+	/// </summary>
+	[Fact]
+	public void Authorize_attributes_are_lifted_onto_the_descriptor()
+	{
+		const string source = """
+			using Microsoft.AspNetCore.Authorization;
+			using SvelteNet;
+
+			namespace Fixture;
+
+			[SvelteRemote]
+			[Authorize(Policy = "admin", Roles = "staff")]
+			public sealed class Api
+			{
+				[Query] public int Secret() => 1;
+				[Query] [AllowAnonymous] public int Public() => 2;
+				[Query] [Authorize(Policy = "extra")] public int Extra() => 3;
+			}
+			""";
+
+		var result = Run(new SvelteRemoteGenerator(), Compilation(source));
+		var generated = Assert.Single(result.Results).GeneratedSources.Single().SourceText.ToString();
+
+		Assert.Contains("new global::SvelteNet.Remote.RemoteAuthorization(\"admin\", \"staff\", null)", generated);
+		Assert.Contains("new global::SvelteNet.Remote.RemoteAuthorization(\"extra\", null, null)", generated);
+		// GetServiceStatus-style opt-out: exactly one method carries AllowAnonymous = true.
+		Assert.Equal(1, generated.Split('\n').Count(line => line.Trim() == "true),"));
+	}
+
+	/// <summary>A service with no [Authorize] must stay open — no accidental lockout.</summary>
+	[Fact]
+	public void Services_without_authorize_emit_no_requirements()
+	{
+		const string source = """
+			using SvelteNet;
+
+			namespace Fixture;
+
+			[SvelteRemote]
+			public sealed class Api
+			{
+				[Query] public int Get() => 1;
+			}
+			""";
+
+		var result = Run(new SvelteRemoteGenerator(), Compilation(source));
+		var generated = Assert.Single(result.Results).GeneratedSources.Single().SourceText.ToString();
+
+		Assert.DoesNotContain("RemoteAuthorization", generated);
+	}
+
 	private static GeneratorDriverRunResult Run(IIncrementalGenerator generator, CSharpCompilation compilation)
 	{
 		GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
