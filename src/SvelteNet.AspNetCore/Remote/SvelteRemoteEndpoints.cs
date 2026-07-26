@@ -78,11 +78,23 @@ internal static class SvelteRemoteEndpoints
 		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandServiceType, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
 
+		// ContentLength is null for chunked bodies and for HTTP/2 requests that just close
+		// the stream, so it cannot distinguish "no body" from "streamed body". Read it and
+		// let an empty payload mean no arguments — a no-argument command sent by anything
+		// other than the bundled client has no reason to send "{}".
 		JsonDocument? body = null;
 		try
 		{
-			if (context.Request.ContentLength != 0)
-				body = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+			if (context.Request.ContentLength is not 0)
+			{
+				using var buffer = new MemoryStream();
+				await context.Request.Body.CopyToAsync(buffer, context.RequestAborted);
+				if (buffer.Length > 0)
+				{
+					buffer.Position = 0;
+					body = await JsonDocument.ParseAsync(buffer, cancellationToken: context.RequestAborted);
+				}
+			}
 		}
 		catch (JsonException)
 		{
@@ -189,9 +201,16 @@ internal static class SvelteRemoteEndpoints
 		return referer.Length > 0 && IsRequestOrigin(context, referer);
 	}
 
+	/// <summary>
+	/// Compares host and port only, not scheme. Behind a TLS-terminating proxy without
+	/// UseForwardedHeaders, Request.Scheme is "http" while the browser sends an https
+	/// Origin — comparing schemes rejected every POST from a correctly configured
+	/// deployment. The authority is what identifies the origin for CSRF purposes; an
+	/// attacker cannot host on the application's own host and port.
+	/// </summary>
 	private static bool IsRequestOrigin(HttpContext context, string value) =>
 		Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-		string.Equals(uri.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+		uri.Scheme is "http" or "https" &&
 		string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase);
 
 	private static string LocalReturnUrl(HttpContext context)

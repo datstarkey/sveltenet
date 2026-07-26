@@ -22,16 +22,20 @@ public abstract class CliSsrEngine : ISvelteSsrEngine, IDisposable
 
 		if (request.baseUrl && globalThis.fetch) {
 			const nativeFetch = globalThis.fetch;
-			globalThis.fetch = (input, init = {}) => {
+			globalThis.fetch = (input, init) => {
+				const options = init ?? {};
 				const target = typeof input === 'string' || input instanceof URL
 					? new URL(input, request.baseUrl)
 					: input;
 				const headers = new Headers(input instanceof Request ? input.headers : undefined);
-				for (const [name, value] of Object.entries(init.headers ?? {})) headers.set(name, value);
+				// Headers() accepts all three HeadersInit forms - a Headers instance, an
+				// array of pairs, and a plain object. Object.entries() only handled the
+				// last, silently dropping the caller's headers for the other two.
+				new Headers(options.headers ?? {}).forEach((value, name) => headers.set(name, value));
 				for (const [name, value] of Object.entries(request.headers ?? {})) {
 					if (!headers.has(name)) headers.set(name, value);
 				}
-				return nativeFetch(target, { ...init, headers });
+				return nativeFetch(target, { ...options, headers });
 			};
 		}
 

@@ -107,6 +107,61 @@ public class CliSsrEngineTests : IDisposable
 		await Task.WhenAll(renders);
 	}
 
+	/// <summary>
+	/// HeadersInit has three legal forms. The runner used Object.entries(), which yields
+	/// nothing for a Headers instance or an array of pairs — so component code passing
+	/// either silently lost every header it set.
+	/// </summary>
+	[Theory]
+	[InlineData("new Headers({ 'X-Probe': 'from-headers' })", "from-headers")]
+	[InlineData("[['X-Probe', 'from-array']]", "from-array")]
+	[InlineData("{ 'X-Probe': 'from-object' }", "from-object")]
+	public async Task The_node_runner_forwards_every_headers_init_form(string headersExpression, string expected)
+	{
+		// The shim wraps globalThis.fetch before the component runs, so the only way to see
+		// what it produced is to receive the request. A real loopback listener does that.
+		using var listener = new System.Net.HttpListener();
+		var port = FreePort();
+		listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+		listener.Start();
+
+		var received = Task.Run(async () =>
+		{
+			var context = await listener.GetContextAsync();
+			var probe = context.Request.Headers["X-Probe"] ?? "missing";
+			context.Response.StatusCode = 200;
+			context.Response.Close();
+			return probe;
+		});
+
+		var server = Path.Combine(_root, ".svelte-net", "server");
+		Directory.CreateDirectory(server);
+		File.WriteAllText(Path.Combine(server, "component.mjs"), "export default { name: 'Example' };");
+		File.WriteAllText(Path.Combine(server, "render.mjs"), $$"""
+			export async function renderComponent() {
+				await fetch('/probe', { headers: {{headersExpression}} });
+				return { head: '', body: 'done' };
+			}
+			""");
+
+		using var engine = new NodeSsrEngine(
+			new SvelteOptions { ContentRoot = _root },
+			new NodeSsrOptions { BaseUrl = new Uri($"http://127.0.0.1:{port}") });
+
+		await engine.RenderAsync("component.mjs", "render.mjs", null);
+
+		Assert.Equal(expected, await received.WaitAsync(TimeSpan.FromSeconds(30)));
+	}
+
+	private static int FreePort()
+	{
+		using var socket = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+		socket.Start();
+		var port = ((System.Net.IPEndPoint)socket.LocalEndpoint).Port;
+		socket.Stop();
+		return port;
+	}
+
 	[Fact]
 	public void Loopback_base_url_comes_from_the_server_and_normalizes_wildcards()
 	{

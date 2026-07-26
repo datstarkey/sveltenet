@@ -81,6 +81,10 @@ explicit setting of your own is left alone. A form that already renders a hidden
    the header through. A request with no `Origin` at all is not from a browser and cannot
    be CSRF'd, so it is allowed — that is what keeps server-to-server callers working.
 
+The comparison is on host and port, not scheme, so a TLS-terminating proxy does not have
+to be configured before POSTs work. Add `UseForwardedHeaders` anyway if you rely on
+`Request.Scheme` or `Request.IsHttps` elsewhere.
+
 Plain `[Form]` posts made without JavaScript cannot set a custom header, so they are
 required to be same-origin by `Origin` or `Referer` instead.
 

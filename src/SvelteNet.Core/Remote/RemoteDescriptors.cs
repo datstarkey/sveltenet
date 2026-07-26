@@ -109,7 +109,7 @@ public static class SvelteRemoteDescriptors
 	private static RemoteAuthorization[]? AuthorizationOf(MemberInfo member)
 	{
 		var found = member.GetCustomAttributes(inherit: true)
-			.Where(a => a.GetType().FullName == "Microsoft.AspNetCore.Authorization.AuthorizeAttribute")
+			.Where(a => DerivesFrom(a.GetType(), "Microsoft.AspNetCore.Authorization.AuthorizeAttribute"))
 			.Select(a =>
 			{
 				var type = a.GetType();
@@ -125,7 +125,22 @@ public static class SvelteRemoteDescriptors
 
 	private static bool HasAllowAnonymous(MemberInfo member) =>
 		member.GetCustomAttributes(inherit: true)
-			.Any(a => a.GetType().FullName == "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute");
+			.Any(a => DerivesFrom(a.GetType(), "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute"));
+
+	/// <summary>
+	/// Matches subclasses too, so a custom attribute deriving from [Authorize] counts —
+	/// the generated path resolves it the same way, and the two must not disagree about
+	/// whether a method is protected.
+	/// </summary>
+	private static bool DerivesFrom(Type? type, string baseTypeFullName)
+	{
+		for (var current = type; current is not null; current = current.BaseType)
+		{
+			if (current.FullName == baseTypeFullName) return true;
+		}
+
+		return false;
+	}
 
 	public static Type UnwrapReturnType(Type type)
 	{

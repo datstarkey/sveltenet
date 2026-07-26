@@ -41,6 +41,9 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 wwwroot/client/
 
+# SvelteNet build stamps
+*.typegen.stamp
+
 # NuGet output
 *.nupkg
 *.snupkg

@@ -24,15 +24,22 @@
          and rewrites the generated files, which in turn retriggers file watchers. The
          stamp is the marker MSBuild compares against the assembly; the tool's real
          outputs live under .svelte-net and the source tree. -->
-    <PropertyGroup>
-        <_SvelteNetStampFile>$(IntermediateOutputPath)sveltenet.typegen.stamp</_SvelteNetStampFile>
-    </PropertyGroup>
+    <!-- Evaluated late, in a target, because this file is imported from the body of the
+         consuming csproj — before the SDK defines $(IntermediateOutputPath). Reading it at
+         import time yields an empty string, which drops the stamp in the project root
+         instead of obj/. -->
+    <Target Name="SvelteNetStampPath" BeforeTargets="SvelteNetGenerateTypes">
+        <PropertyGroup>
+            <_SvelteNetStampFile>$(IntermediateOutputPath)sveltenet.typegen.stamp</_SvelteNetStampFile>
+        </PropertyGroup>
+    </Target>
 
     <Target Name="SvelteNetGenerateTypes"
             AfterTargets="Build"
+            DependsOnTargets="SvelteNetStampPath"
             Condition="'$(SvelteNetTypeGen)' == 'true' AND '$(DesignTimeBuild)' != 'true'"
             Inputs="$(TargetPath)"
-            Outputs="$(_SvelteNetStampFile)">
+            Outputs="$(IntermediateOutputPath)sveltenet.typegen.stamp">
         <PropertyGroup>
             <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' == ''">$(TargetPath)</_SvelteNetApplicationAssemblies>
             <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' != ''">$(SvelteNetApplicationAssemblies)</_SvelteNetApplicationAssemblies>

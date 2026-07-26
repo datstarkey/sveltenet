@@ -15,6 +15,8 @@ Working list of where SvelteNet is heading. Items move to **Shipped** when they 
 - **Persistent SSR worker for Node.js/Bun** — those renderers spawn a process per render, which costs tens of milliseconds per island. A warm worker pool would make them competitive with Jint on latency without Jint's shared-module-state caveat.
 - **Antiforgery for remote functions** — commands and forms are defended by the `X-SvelteNet` header plus an Origin check. An opt-in token requirement would add defence in depth for apps that want it.
 - **Cancellation for queries** — `RemoteQuery` has no `AbortSignal`, so navigating away leaves requests in flight. Refresh races are already handled by generation counters.
+- **No-JS form validation returns problem JSON** — a `[Form]` post from a browser without JavaScript renders the raw `application/problem+json` document instead of redirecting back with the errors. Fixing it properly needs the errors carried across the redirect (TempData or equivalent), which is a feature rather than a patch. Enhanced submits are unaffected.
+- **Metadata generator holds Roslyn symbols in the incremental pipeline** — `SvelteMetadataGenerator` collects `INamedTypeSymbol`s, which roots the `Compilation` and defeats incremental caching, so a large solution re-runs full semantic analysis on every keystroke in the IDE. Needs projecting to equatable value models inside the transform.
 
 ## Shipped
 

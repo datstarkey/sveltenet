@@ -134,6 +134,70 @@ public class GeneratorTests
 		Assert.Equal(1, generated.Split('\n').Count(line => line.Trim() == "true),"));
 	}
 
+	/// <summary>
+	/// AuthorizeAttribute is Inherited = true, and both MVC and the reflection fallback
+	/// honour that. If the generator only reads directly-applied attributes, a service
+	/// deriving from a secured base silently loses its policy on the generated path —
+	/// which is the default path.
+	/// </summary>
+	[Fact]
+	public void Authorize_on_a_base_class_is_inherited()
+	{
+		const string source = """
+			using Microsoft.AspNetCore.Authorization;
+			using SvelteNet;
+
+			namespace Fixture;
+
+			[Authorize(Policy = "admin")]
+			public abstract class SecuredApiBase { }
+
+			[SvelteRemote]
+			public sealed class Api : SecuredApiBase
+			{
+				[Query] public int Get() => 1;
+			}
+			""";
+
+		var result = Run(new SvelteRemoteGenerator(), Compilation(source));
+		var generated = Assert.Single(result.Results).GeneratedSources.Single().SourceText.ToString();
+
+		Assert.Contains("new global::SvelteNet.Remote.RemoteAuthorization(\"admin\", null, null)", generated);
+	}
+
+	/// <summary>
+	/// SvelteRemoteGenerator emits no dispatcher for a service with no remote methods, so
+	/// the metadata initializer must not call one — otherwise adding [SvelteRemote] before
+	/// the first method, or commenting the methods out, fails the consumer's build with
+	/// CS0103. A second service is present so metadata is emitted at all.
+	/// </summary>
+	[Fact]
+	public void A_remote_service_with_no_methods_does_not_break_the_build()
+	{
+		const string source = """
+			using SvelteNet;
+
+			namespace Fixture;
+
+			public sealed record Thing(string Name);
+
+			[SvelteRemote]
+			public sealed class EmptyApi { }
+
+			[SvelteRemote]
+			public sealed class RealApi
+			{
+				[Query] public Thing Get() => new("x");
+			}
+			""";
+
+		var generated = Assert.Single(Run(new SvelteMetadataGenerator(), Compilation(source)).Results)
+			.GeneratedSources.Single().SourceText.ToString();
+
+		Assert.DoesNotContain("EmptyApiRemoteDispatcher", generated);
+		Assert.Contains("RealApiRemoteDispatcher", generated);
+	}
+
 	/// <summary>A service with no [Authorize] must stay open — no accidental lockout.</summary>
 	[Fact]
 	public void Services_without_authorize_emit_no_requirements()

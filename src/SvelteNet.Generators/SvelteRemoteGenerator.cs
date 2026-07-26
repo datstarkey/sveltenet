@@ -159,7 +159,7 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 	private static string[] AuthorizationOf(ISymbol symbol)
 	{
 		var results = new List<string>();
-		foreach (var attribute in symbol.GetAttributes())
+		foreach (var attribute in InheritedAttributes(symbol))
 		{
 			if (!InheritsFrom(attribute.AttributeClass, "Microsoft.AspNetCore.Authorization.AuthorizeAttribute"))
 				continue;
@@ -180,8 +180,38 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 	}
 
 	private static bool HasAllowAnonymous(ISymbol symbol) =>
-		symbol.GetAttributes().Any(a =>
+		InheritedAttributes(symbol).Any(a =>
 			InheritsFrom(a.AttributeClass, "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute"));
+
+	/// <summary>
+	/// Attributes on the symbol and everything it inherits from. [Authorize] and
+	/// [AllowAnonymous] are both Inherited = true, and MVC and the reflection fallback
+	/// (which uses GetCustomAttributes(inherit: true)) honour that. GetAttributes() alone
+	/// sees only directly-applied attributes, so a service deriving from a secured base
+	/// would generate a descriptor with no policy at all — silently unprotected on the
+	/// path everyone runs.
+	/// </summary>
+	private static IEnumerable<AttributeData> InheritedAttributes(ISymbol symbol)
+	{
+		switch (symbol)
+		{
+			case INamedTypeSymbol type:
+				for (var current = type; current is not null; current = current.BaseType)
+					foreach (var attribute in current.GetAttributes())
+						yield return attribute;
+				break;
+
+			case IMethodSymbol method:
+				for (var current = method; current is not null; current = current.OverriddenMethod)
+					foreach (var attribute in current.GetAttributes())
+						yield return attribute;
+				break;
+
+			default:
+				foreach (var attribute in symbol.GetAttributes()) yield return attribute;
+				break;
+		}
+	}
 
 	private static string? NamedString(AttributeData attribute, string name) =>
 		attribute.NamedArguments.FirstOrDefault(a => a.Key == name).Value.Value as string;

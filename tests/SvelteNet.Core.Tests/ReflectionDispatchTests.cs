@@ -80,4 +80,28 @@ public class ReflectionDispatchTests
 	{
 		Assert.Equal("ok", await Invoke(new Api(), "ValueTaskValue"));
 	}
+
+	[Microsoft.AspNetCore.Authorization.Authorize(Policy = "admin")]
+	private abstract class SecuredBase
+	{
+	}
+
+	private sealed class InheritedApi : SecuredBase
+	{
+		[Query] public int Get() => 1;
+	}
+
+	/// <summary>
+	/// [Authorize] is Inherited = true. The generated path walks the base chain, and the
+	/// reflection fallback has to agree — a difference here means a service is protected
+	/// under one dispatch path and open under the other.
+	/// </summary>
+	[Fact]
+	public void Authorize_on_a_base_class_reaches_the_descriptor()
+	{
+		var descriptor = SvelteRemoteDescriptors.FromReflection(typeof(InheritedApi));
+
+		var authorization = Assert.Single(descriptor.Authorization!);
+		Assert.Equal("admin", authorization.Policy);
+	}
 }

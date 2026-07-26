@@ -95,7 +95,12 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 			if (Attribute(type, "SvelteNet.SvelteRemoteAttribute") is not null)
 			{
 				var remoteMethods = type.GetMembers().OfType<IMethodSymbol>().Where(IsRemoteMethod).ToArray();
-				if (!remoteMethods.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+				// SvelteRemoteGenerator emits no dispatcher for a service with no remote
+				// methods, so calling one here would not compile. That happens whenever
+				// [SvelteRemote] is added before the first method, or the methods are
+				// commented out.
+				if (remoteMethods.Length > 0 &&
+					!remoteMethods.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
 				{
 					var fullName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 					remoteInitializers.Add($"{type.Name}RemoteDispatcher_{StableHash(fullName):x8}.Init();");
