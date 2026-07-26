@@ -105,11 +105,18 @@ export interface {{exportType.TsType()}} {
 			var keyTypeName = keyType.TsType();
 			var valueTypeName = valueType.TsType();
 
+			// Enum keys serialize fine (JsonStringEnumConverter + DictionaryKeyPolicy), but
+			// a union type cannot be an index signature — Partial<Record<...>> expresses
+			// "some subset of these keys", which is exactly what the payload contains.
+			if (keyType.StripNullable()!.IsEnum)
+				return $"Partial<Record<{keyTypeName}, {valueTypeName}>>";
+
 			if (keyTypeName is not "number" and not "string")
 			{
 				throw new InvalidOperationException(
-					$"Error when determining TypeScript type for C# type '{type.FullName}': " +
-					"TypeScript dictionary key type must be either 'number' or 'string'");
+					$"Cannot generate a TypeScript type for '{type.FullName}': a dictionary key must be a string, " +
+					"a number, an enum, or a type that serializes as one of those (Guid, DateTime, ...). " +
+					$"'{keyType.FullName}' does not.");
 			}
 
 			return $"{{ [key: {keyTypeName}]: {valueTypeName}; }}";
@@ -198,12 +205,17 @@ export interface {{exportType.TsType()}} {
 			case "System.UInt16":
 			case "System.Int32":
 			case "System.UInt32":
-			case "System.Int64":
-			case "System.UInt64":
 			case "System.Single":
 			case "System.Double":
-			case "System.Decimal":
 				name = "number";
+				return true;
+			// 64-bit integers and decimals exceed what a JavaScript number holds exactly,
+			// so SvelteJson serializes them as strings (see LargeNumberConverter). The TS
+			// type must agree or the generated declarations lie about the payload.
+			case "System.Int64":
+			case "System.UInt64":
+			case "System.Decimal":
+				name = "string";
 				return true;
 			default:
 				return false;

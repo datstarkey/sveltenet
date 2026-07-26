@@ -94,4 +94,20 @@ public class RemoteAuthorizationTests : IClassFixture<RemoteFunctionsFactory>
 
 		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 	}
+
+	/// <summary>
+	/// 64-bit values survive the round trip because they travel as JSON strings. As JSON
+	/// numbers, 9007199254740993 would arrive in the browser as 9007199254740992.
+	/// </summary>
+	[Fact]
+	public async Task Large_numbers_reach_the_client_intact()
+	{
+		var client = await SignedIn(CreateClient(), "admin");
+
+		var body = await (await client.GetAsync("/_sveltenet/remote/AdminApi/GetAccount")).Content.ReadAsStringAsync();
+
+		Assert.Contains("\"accountId\":\"9007199254740993\"", body);
+		Assert.Contains("\"balance\":\"1234.56\"", body);
+		Assert.Contains("\"openTickets\":3", body);
+	}
 }

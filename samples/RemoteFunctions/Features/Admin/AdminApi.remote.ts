@@ -3,6 +3,7 @@
 import { command, query } from 'sveltenet/remote';
 
 export class AdminApi {
+	static readonly GetAccount = query<AccountSummary>('AdminApi/GetAccount');
 	static readonly GetAuditLog = query<AuditEntry[]>('AdminApi/GetAuditLog');
 	static readonly GetServiceStatus = query<string>('AdminApi/GetServiceStatus');
 	static readonly PurgeAuditLog = command<void>('AdminApi/PurgeAuditLog');

@@ -303,7 +303,14 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 		else if (SimpleType(named) is { } simple)
 			result = simple;
 		else if (TryDictionary(named, out var key, out var value))
-			result = $"{{ [key: {DictionaryKeyType(key)}]: {TypeScriptType(value, IsNullable(value, value.NullableAnnotation))}; }}";
+		{
+			var valueType = TypeScriptType(value, IsNullable(value, value.NullableAnnotation));
+			// Enum keys serialize fine, but a union type cannot be an index signature;
+			// Partial<Record<...>> says "some subset of these keys", which is the payload.
+			result = StripNullable(key).TypeKind == TypeKind.Enum
+				? $"Partial<Record<{TypeScriptType(key, includeNull: false)}, {valueType}>>"
+				: $"{{ [key: {DictionaryKeyType(key)}]: {valueType}; }}";
+		}
 		else if (TryCollection(named, out var element))
 			result = $"{TypeScriptType(element, IsNullable(element, element.NullableAnnotation))}[]";
 		else if (named.IsGenericType)
@@ -322,9 +329,11 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 			SpecialType.System_Byte or SpecialType.System_SByte or
 				SpecialType.System_Int16 or SpecialType.System_UInt16 or
 				SpecialType.System_Int32 or SpecialType.System_UInt32 or
-				SpecialType.System_Int64 or SpecialType.System_UInt64 or
-				SpecialType.System_Single or SpecialType.System_Double or
-				SpecialType.System_Decimal => "number",
+				SpecialType.System_Single or SpecialType.System_Double => "number",
+			// 64-bit integers and decimals exceed what a JavaScript number can hold
+			// exactly, so SvelteJson serializes them as strings. See LargeNumberConverter.
+			SpecialType.System_Int64 or SpecialType.System_UInt64 or
+				SpecialType.System_Decimal => "string",
 			SpecialType.System_Object => "unknown",
 			_ when type.TypeKind == TypeKind.Enum => type.Name,
 			_ when type.ToDisplayString() is "System.Guid" or "System.DateTime" or "System.DateTimeOffset" or
@@ -356,11 +365,14 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 
 	private static bool IsDictionary(INamedTypeSymbol type) => TryDictionary(type, out _, out _);
 
+	/// <summary>
+	/// 64-bit keys are excluded from the number index signature for the same reason
+	/// 64-bit values are: they do not survive a JavaScript number.
+	/// </summary>
 	private static string DictionaryKeyType(ITypeSymbol key) =>
 		key.SpecialType is SpecialType.System_Byte or SpecialType.System_SByte or
 			SpecialType.System_Int16 or SpecialType.System_UInt16 or
-			SpecialType.System_Int32 or SpecialType.System_UInt32 or
-			SpecialType.System_Int64 or SpecialType.System_UInt64 ? "number" : "string";
+			SpecialType.System_Int32 or SpecialType.System_UInt32 ? "number" : "string";
 
 	private static void CollectImports(ITypeSymbol type, HashSet<string> imports)
 	{
