@@ -36,8 +36,34 @@ public class SvelteOptions
 	/// <summary>Vite client build output. Must live under wwwroot so it is publicly served.</summary>
 	public string ClientOutput { get; set; } = "wwwroot/client";
 
-	/// <summary>URL prefix the client build is served from (ClientOutput minus wwwroot).</summary>
-	public string ClientPublicPath { get; set; } = "/client";
+	private string? _clientPublicPath;
+
+	/// <summary>
+	/// URL prefix the client build is served from. Derived from <see cref="ClientOutput"/>
+	/// by dropping the web root segment, so the two cannot silently disagree; set it
+	/// explicitly only when assets are served from somewhere else (a CDN, say).
+	/// </summary>
+	public string ClientPublicPath
+	{
+		get => _clientPublicPath ?? DeriveClientPublicPath(ClientOutput);
+		set => _clientPublicPath = value;
+	}
+
+	/// <summary>Web root directory name stripped from <see cref="ClientOutput"/>.</summary>
+	public string WebRoot { get; set; } = "wwwroot";
+
+	private string DeriveClientPublicPath(string clientOutput)
+	{
+		var normalized = clientOutput.Replace('\\', '/').Trim('/');
+		var webRoot = WebRoot.Replace('\\', '/').Trim('/');
+
+		// Output that is the web root itself is served from the site root.
+		if (normalized.Equals(webRoot, StringComparison.OrdinalIgnoreCase)) return "/";
+		if (normalized.StartsWith(webRoot + "/", StringComparison.OrdinalIgnoreCase))
+			normalized = normalized[(webRoot.Length + 1)..];
+
+		return "/" + normalized.Trim('/');
+	}
 
 	/// <summary>
 	/// Vite SSR build output. Deliberately NOT under wwwroot — the server bundle

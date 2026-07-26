@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Remote;
@@ -19,26 +20,33 @@ public static class SvelteNetExtensions
 {
 	/// <summary>
 	/// Registers SvelteNet. [SvelteRemote] services are discovered from the calling
-	/// assembly; pass <paramref name="applicationAssemblies"/> when they live elsewhere.
+	/// assembly; pass <paramref name="applicationAssemblies"/> when they live elsewhere —
+	/// including whenever this call is wrapped in your own extension method, since the
+	/// caller is then that method's assembly rather than the application's.
 	/// Rendering is client-only unless an SSR renderer is selected on the returned builder.
 	/// </summary>
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static SvelteNetBuilder AddSvelteNet(this IServiceCollection services, Action<SvelteOptions>? configure = null, params Assembly[] applicationAssemblies)
 	{
-		// The calling assembly is the app itself — the default discovery scope.
-		// Scoping matters when several SvelteNet apps share a process
-		// (WebApplicationFactory test hosts).
+		// The calling assembly is normally the app itself, and scoping matters when
+		// several SvelteNet apps share a process (WebApplicationFactory test hosts).
+		// It is a guess, though: wrapping this call in an extension method moves it to
+		// the wrapper's assembly. ApplicationAssemblies, the explicit parameter, and the
+		// entry assembly are all preferred over it.
 		var defaultAssemblies = applicationAssemblies is { Length: > 0 }
 			? applicationAssemblies
 			: [Assembly.GetCallingAssembly()];
-		var env = services.LastOrDefault(d => d.ServiceType == typeof(IWebHostEnvironment))?.ImplementationInstance
-				  as IWebHostEnvironment;
+		var env = ResolveEnvironment(services);
 		var options = new SvelteOptions { ContentRoot = env?.ContentRootPath ?? Directory.GetCurrentDirectory() };
-		if (env?.IsDevelopment() == true && Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") != "true")
-			options.IsDev = true;
+		if (env?.IsDevelopment() == true) options.IsDev = true;
 		configure?.Invoke(options);
 		options.ApplicationAssemblies ??= defaultAssemblies;
 		var assemblies = options.ApplicationAssemblies;
+
+		if (assemblies.Count == 0)
+			throw new InvalidOperationException(
+				"SvelteNet has no assemblies to discover types in. Pass them to AddSvelteNet, or set " +
+				"SvelteOptions.ApplicationAssemblies.");
 		services.AddSingleton(options);
 		services.AddHttpContextAccessor();
 		services.AddSingleton<SvelteRenderer>();
@@ -75,6 +83,33 @@ public static class SvelteNetExtensions
 		services.AddSingleton(new SvelteRemoteRegistry(descriptors));
 
 		return new SvelteNetBuilder(services);
+	}
+
+	/// <summary>
+	/// The hosting environment, which is not resolvable yet — the provider does not exist
+	/// during registration. WebApplicationBuilder registers it as an instance, so it can be
+	/// read off the collection; anything else falls back to the standard environment
+	/// variables rather than guessing.
+	/// </summary>
+	private static IWebHostEnvironment? ResolveEnvironment(IServiceCollection services)
+	{
+		var registered = services.LastOrDefault(d => d.ServiceType == typeof(IWebHostEnvironment))?.ImplementationInstance
+			as IWebHostEnvironment;
+		if (registered is not null) return registered;
+
+		var name = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+			?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+		return name is null ? null : new ResolvedEnvironment(name);
+	}
+
+	private sealed class ResolvedEnvironment(string environmentName) : IWebHostEnvironment
+	{
+		public string EnvironmentName { get; set; } = environmentName;
+		public string ApplicationName { get; set; } = string.Empty;
+		public string WebRootPath { get; set; } = string.Empty;
+		public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
+		public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
+		public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
 	}
 
 	/// <summary>

@@ -30,13 +30,18 @@ export function sveltenet(options = {}) {
 	} = options;
 	const sourcePatterns = pagesPath ? [`${pagesPath}/**/*.svelte`] : include;
 
-	if (experimentalAsync) {
-		// Enables Svelte's await expressions, so components can `await getTodos()`.
-		svelteOptions.compilerOptions = {
-			...svelteOptions.compilerOptions,
-			experimental: { ...svelteOptions.compilerOptions?.experimental, async: true },
-		};
-	}
+	// Copied, never mutated: `options` belongs to the caller, and rewriting their object
+	// would leak into anything else holding a reference to it.
+	const resolvedSvelteOptions = experimentalAsync
+		? {
+				...svelteOptions,
+				// Enables Svelte's await expressions, so components can `await getTodos()`.
+				compilerOptions: {
+					...svelteOptions.compilerOptions,
+					experimental: { ...svelteOptions.compilerOptions?.experimental, async: true },
+				},
+			}
+		: svelteOptions;
 
 	/** @param {'client' | 'ssr'} environment @param {string} outDir */
 	const buildConfig = (environment, outDir) => ({
@@ -95,5 +100,5 @@ export function sveltenet(options = {}) {
 		},
 	};
 
-	return [svelte(svelteOptions), configPlugin];
+	return [svelte(resolvedSvelteOptions), configPlugin];
 }

@@ -13,11 +13,22 @@ const isServer = typeof window === 'undefined';
  * and reused during hydration instead of re-fetching. Falls back to a plain fetch
  * when hydratable is unavailable (experimental async disabled).
  */
+let warnedAboutHydratable = false;
+
 function stash(key, fn) {
 	try {
 		return hydratable(key, fn);
 	} catch (error) {
-		console.warn(`[sveltenet] hydratable unavailable for '${key}': ${error?.message ?? error}`);
+		// Warned once, not once per query: with experimental async off this fires for
+		// every query on every render and drowns out real output.
+		if (!warnedAboutHydratable) {
+			warnedAboutHydratable = true;
+			console.warn(
+				`[sveltenet] hydratable is unavailable, so SSR query results will not be reused on hydration: ${
+					error?.message ?? error
+				}`,
+			);
+		}
 		return fn();
 	}
 }
@@ -167,7 +178,10 @@ export function query(path, mapArgs) {
 	};
 }
 
-/** Refreshes every query created on this page (forms do this after a successful submit). */
+/**
+ * Refreshes every query created on this page. Forms do this after a successful submit
+ * unless given an explicit `updates` list.
+ */
 export function refreshAll() {
 	const refreshes = [];
 	for (const reference of activeQueries) {
@@ -205,22 +219,26 @@ export function command(path, mapArgs) {
  * JavaScript (posts and redirects back) and progressively enhances with fields,
  * issues, pending, result, validate, enhance and for — mirroring SvelteKit.
  */
-export function form(path) {
+export function form(path, options) {
 	const instances = new Map();
 	const create = () =>
-		makeForm(path, (id) => {
-			const key = String(id);
-			let instance = instances.get(key);
-			if (!instance) {
-				instance = create();
-				instances.set(key, instance);
-			}
-			return instance;
-		});
+		makeForm(
+			path,
+			(id) => {
+				const key = String(id);
+				let instance = instances.get(key);
+				if (!instance) {
+					instance = create();
+					instances.set(key, instance);
+				}
+				return instance;
+			},
+			options,
+		);
 	return create();
 }
 
-function makeForm(path, forLookup) {
+function makeForm(path, forLookup, options) {
 	const action = `${REMOTE_BASE}/${path}`;
 	let pending = $state(0);
 	let result = $state(undefined);
@@ -243,7 +261,10 @@ function makeForm(path, forLookup) {
 			}
 			issues = undefined;
 			result = outcome.value;
-			await refreshAll();
+			// Default is refresh-everything, which is right for a small page but sends one
+			// request per query on a large one. `updates` narrows it to what the mutation
+			// actually invalidated; an empty array refreshes nothing.
+			await (options?.updates ? Promise.all(options.updates().map((q) => q.refresh())) : refreshAll());
 			return outcome.value === undefined ? true : outcome.value;
 		} finally {
 			pending--;
