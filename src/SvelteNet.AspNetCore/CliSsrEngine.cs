@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 
 /// <summary>Shared process transport for the Node.js and Bun SSR backends.</summary>
-public abstract class CliSsrEngine : ISvelteSsrEngine
+public abstract class CliSsrEngine : ISvelteSsrEngine, IDisposable
 {
 	private const string ResultMarker = "__SVELTENET_RESULT__";
 	private const string Runner = """
@@ -22,16 +22,20 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 
 		if (request.baseUrl && globalThis.fetch) {
 			const nativeFetch = globalThis.fetch;
-			globalThis.fetch = (input, init = {}) => {
+			globalThis.fetch = (input, init) => {
+				const options = init ?? {};
 				const target = typeof input === 'string' || input instanceof URL
 					? new URL(input, request.baseUrl)
 					: input;
 				const headers = new Headers(input instanceof Request ? input.headers : undefined);
-				for (const [name, value] of Object.entries(init.headers ?? {})) headers.set(name, value);
+				// Headers() accepts all three HeadersInit forms - a Headers instance, an
+				// array of pairs, and a plain object. Object.entries() only handled the
+				// last, silently dropping the caller's headers for the other two.
+				new Headers(options.headers ?? {}).forEach((value, name) => headers.set(name, value));
 				for (const [name, value] of Object.entries(request.headers ?? {})) {
 					if (!headers.has(name)) headers.set(name, value);
 				}
-				return nativeFetch(target, { ...init, headers });
+				return nativeFetch(target, { ...options, headers });
 			};
 		}
 
@@ -53,6 +57,8 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 	private readonly string _backendName;
 	private readonly Uri? _baseUrl;
 	private readonly IReadOnlySet<string> _forwardHeaders;
+	private readonly SemaphoreSlim _verifyLock = new(1, 1);
+	private bool _verified;
 
 	protected CliSsrEngine(
 		SvelteOptions options,
@@ -79,16 +85,18 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 		_baseUrl = baseUrl;
 		_forwardHeaders = new HashSet<string>(forwardHeaders, StringComparer.OrdinalIgnoreCase);
 		_arguments = arguments;
-
-		VerifyCli();
 	}
 
-	public SsrResult Render(
+	public async ValueTask<SsrResult> RenderAsync(
 		string componentModule,
 		string renderModule,
 		string? propsJson,
 		CancellationToken cancellationToken = default)
 	{
+		// Verified once, on first render rather than in the constructor: resolving a
+		// singleton from DI should not spawn a process.
+		await EnsureCliAsync(cancellationToken).ConfigureAwait(false);
+
 		var serverDirectory = Path.GetFullPath(Path.Combine(_options.ContentRoot, _options.ServerOutput));
 		var request = new CliRenderRequest
 		{
@@ -109,16 +117,24 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 			throw MissingCliException(exception);
 		}
 
-		var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-		var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-		process.StandardInput.Write(JsonSerializer.Serialize(request, SvelteJson.Options));
-		process.StandardInput.Close();
-
 		using var timeout = new CancellationTokenSource(_timeout);
 		using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
+		var standardOutput = process.StandardOutput.ReadToEndAsync(linked.Token);
+		var standardError = process.StandardError.ReadToEndAsync(linked.Token);
+
+		string output;
+		string error;
 		try
 		{
-			process.WaitForExitAsync(linked.Token).GetAwaiter().GetResult();
+			await process.StandardInput.WriteAsync(
+				JsonSerializer.Serialize(request, SvelteJson.Options).AsMemory(),
+				linked.Token).ConfigureAwait(false);
+			process.StandardInput.Close();
+
+			await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+			output = await standardOutput.ConfigureAwait(false);
+			error = await standardError.ConfigureAwait(false);
 		}
 		catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
 		{
@@ -131,8 +147,6 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 			throw;
 		}
 
-		var output = standardOutput.GetAwaiter().GetResult();
-		var error = standardError.GetAwaiter().GetResult();
 		if (process.ExitCode != 0)
 			throw new InvalidOperationException(
 				$"{_backendName} SSR exited with code {process.ExitCode}: {error.Trim()}");
@@ -171,7 +185,24 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 		return new Process { StartInfo = startInfo };
 	}
 
-	private void VerifyCli()
+	private async ValueTask EnsureCliAsync(CancellationToken cancellationToken)
+	{
+		if (Volatile.Read(ref _verified)) return;
+
+		await _verifyLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			if (_verified) return;
+			await VerifyCliAsync(cancellationToken).ConfigureAwait(false);
+			Volatile.Write(ref _verified, true);
+		}
+		finally
+		{
+			_verifyLock.Release();
+		}
+	}
+
+	private async ValueTask VerifyCliAsync(CancellationToken cancellationToken)
 	{
 		using var process = new Process
 		{
@@ -189,12 +220,20 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 		try
 		{
 			if (!process.Start()) throw MissingCliException();
-			if (!process.WaitForExit(5_000))
+
+			using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+			using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+			try
+			{
+				await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
 			{
 				TryKill(process);
 				throw new InvalidOperationException(
 					$"{_backendName} SSR could not verify '{_executablePath}' because its version check timed out.");
 			}
+
 			if (process.ExitCode != 0) throw MissingCliException();
 		}
 		catch (Win32Exception exception)
@@ -275,6 +314,12 @@ public abstract class CliSsrEngine : ISvelteSsrEngine
 		{
 			// The process exited between the HasExited check and Kill.
 		}
+	}
+
+	public void Dispose()
+	{
+		_verifyLock.Dispose();
+		GC.SuppressFinalize(this);
 	}
 
 	private sealed class CliRenderRequest

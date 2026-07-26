@@ -18,9 +18,29 @@ internal static class SvelteRequestCache
 		public bool HtmlConsumed { get; set; }
 	}
 
+	public static async Task<string> RenderHtmlAsync(HttpContext httpContext, string component, object? data, string? elementId)
+	{
+		var entry = await GetOrRenderAsync(httpContext, component, data, elementId).ConfigureAwait(false);
+		return ConsumeHtml(entry, component);
+	}
+
+	public static async Task<string> RenderHeadAsync(HttpContext httpContext, string component, object? data, string? elementId)
+	{
+		return (await GetOrRenderAsync(httpContext, component, data, elementId).ConfigureAwait(false)).Result.Head;
+	}
+
 	public static string RenderHtml(HttpContext httpContext, string component, object? data, string? elementId)
 	{
-		var entry = GetOrRender(httpContext, component, data, elementId);
+		return ConsumeHtml(GetOrRender(httpContext, component, data, elementId), component);
+	}
+
+	public static string RenderHead(HttpContext httpContext, string component, object? data, string? elementId)
+	{
+		return GetOrRender(httpContext, component, data, elementId).Result.Head;
+	}
+
+	private static string ConsumeHtml(Entry entry, string component)
+	{
 		if (entry.HtmlConsumed)
 		{
 			throw new InvalidOperationException(
@@ -33,14 +53,23 @@ internal static class SvelteRequestCache
 		return entry.Result.Html;
 	}
 
-	public static string RenderHead(HttpContext httpContext, string component, object? data, string? elementId)
+	private static async Task<Entry> GetOrRenderAsync(HttpContext httpContext, string component, object? data, string? elementId)
 	{
-		return GetOrRender(httpContext, component, data, elementId).Result.Head;
+		var cacheKey = CacheKey(component, elementId);
+		if (httpContext.Items[cacheKey] is Entry cached) return cached;
+
+		var renderer = httpContext.RequestServices.GetRequiredService<SvelteRenderer>();
+		var result = await renderer
+			.RenderAsync(component, data, elementId, httpContext.RequestAborted)
+			.ConfigureAwait(false);
+		var entry = new Entry { Result = result };
+		httpContext.Items[cacheKey] = entry;
+		return entry;
 	}
 
 	private static Entry GetOrRender(HttpContext httpContext, string component, object? data, string? elementId)
 	{
-		var cacheKey = $"sveltenet:{component}:{elementId}";
+		var cacheKey = CacheKey(component, elementId);
 		if (httpContext.Items[cacheKey] is Entry cached) return cached;
 
 		var renderer = httpContext.RequestServices.GetRequiredService<SvelteRenderer>();
@@ -48,4 +77,6 @@ internal static class SvelteRequestCache
 		httpContext.Items[cacheKey] = entry;
 		return entry;
 	}
+
+	private static string CacheKey(string component, string? elementId) => $"sveltenet:{component}:{elementId}";
 }

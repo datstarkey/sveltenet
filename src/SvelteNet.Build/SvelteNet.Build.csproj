@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <!-- Targets the lowest supported runtime and rolls forward, so a single copy of
+             the tool runs under whichever SDK builds the consuming app — an app on net8.0
+             must not need the .NET 10 runtime just to generate its types. -->
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>LatestMajor</RollForward>
         <OutputType>Exe</OutputType>
         <RootNamespace>SvelteNet.Build</RootNamespace>
         <Title>SvelteNet.Build</Title>

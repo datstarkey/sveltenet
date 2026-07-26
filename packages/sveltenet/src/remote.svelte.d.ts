@@ -73,7 +73,19 @@ export interface RemoteForm<T, F = Record<string, unknown>> extends RemoteFormAt
 }
 
 /** Form handler bound to a [Form] C# method — spread onto a <form>: `<form {...createPost}>`. */
-export declare function form<T, F = Record<string, unknown>>(path: string): RemoteForm<T, F>;
+export interface FormOptions {
+	/**
+	 * Queries to refresh after a successful submit. Without it every query on the page is
+	 * refreshed, which is fine for a small page but is one request per query on a large
+	 * one. Return an empty array to refresh nothing.
+	 */
+	updates?: () => RemoteQuery<unknown>[];
+}
+
+export declare function form<T, F = Record<string, unknown>>(
+	path: string,
+	options?: FormOptions,
+): RemoteForm<T, F>;
 
 /** Refreshes every query created on this page. */
 export declare function refreshAll(): Promise<unknown[]>;

@@ -128,3 +128,78 @@ test('the returned cleanup detaches the listener', async () => {
 
 	assert.equal(calls.length, 0);
 });
+
+test('the antiforgery token is sent as a header', async () => {
+	const { window, form } = setupDom();
+	const calls = stubFetch([{ data: {} }]);
+	enhance({ token: 'token-from-data-prop' })(form);
+
+	await submit(window, form);
+
+	assert.equal(calls[0].init.headers.RequestVerificationToken, 'token-from-data-prop');
+});
+
+test('an existing hidden antiforgery input is used without configuration', async () => {
+	const { window, form } = setupDom();
+	form.insertAdjacentHTML(
+		'afterbegin',
+		'<input type="hidden" name="__RequestVerificationToken" value="token-from-markup" />',
+	);
+	const calls = stubFetch([{ data: {} }]);
+	enhance()(form);
+
+	await submit(window, form);
+
+	assert.equal(calls[0].init.headers.RequestVerificationToken, 'token-from-markup');
+});
+
+test('no antiforgery header is sent when there is no token', async () => {
+	const { window, form } = setupDom();
+	const calls = stubFetch([{ data: {} }]);
+	enhance()(form);
+
+	await submit(window, form);
+
+	assert.equal('RequestVerificationToken' in calls[0].init.headers, false);
+});
+
+// A double-click used to post the same mutation twice.
+test('a second submit while one is in flight is ignored', async () => {
+	const { window, form } = setupDom();
+	let resolveFirst;
+	const calls = [];
+	globalThis.fetch = async (url, init) => {
+		calls.push({ url: String(url), init });
+		await new Promise((resolve) => (resolveFirst = resolve));
+		return { ok: true, status: 200, json: async () => ({ data: {} }) };
+	};
+	enhance()(form);
+
+	form.dispatchEvent(new window.SubmitEvent('submit', { cancelable: true, bubbles: true }));
+	await new Promise((resolve) => setTimeout(resolve, 5));
+	form.dispatchEvent(new window.SubmitEvent('submit', { cancelable: true, bubbles: true }));
+	await new Promise((resolve) => setTimeout(resolve, 5));
+
+	assert.equal(calls.length, 1);
+	resolveFirst();
+	await new Promise((resolve) => setTimeout(resolve, 20));
+
+	// Once the first completes, the form accepts submits again.
+	await submit(window, form);
+	assert.equal(calls.length, 2);
+});
+
+// The token usually comes from the data prop, which enhanced responses replace.
+test('a token function is read at submit time, not at attach time', async () => {
+	const { window, form } = setupDom();
+	let current = 'first';
+	const calls = stubFetch([{ data: {} }, { data: {} }]);
+	enhance({ token: () => current })(form);
+
+	await submit(window, form);
+	assert.equal(calls[0].init.headers.RequestVerificationToken, 'first');
+
+	current = 'rotated';
+	await submit(window, form);
+	assert.equal(calls[1].init.headers.RequestVerificationToken, 'rotated');
+});

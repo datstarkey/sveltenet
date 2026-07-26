@@ -33,7 +33,9 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 		string FullReturnType,
 		string TypeScriptReturnType,
 		string ReturnShape,
-		ParameterModel[] Parameters);
+		ParameterModel[] Parameters,
+		string[] Authorization,
+		bool AllowAnonymous);
 
 	private sealed record ServiceModel(
 		string ServiceName,
@@ -42,7 +44,9 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 		string HintName,
 		MethodModel[] Methods,
 		string? DuplicateMethod,
-		Location? DuplicateLocation);
+		Location? DuplicateLocation,
+		string[] Authorization,
+		bool AllowAnonymous);
 
 	private static readonly DiagnosticDescriptor OverloadsNotSupported = new(
 		"SVELTENET001",
@@ -113,7 +117,15 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 				p.HasExplicitDefaultValue,
 				p.HasExplicitDefaultValue ? DefaultLiteral(p) : "default")).ToArray();
 
-			methods.Add(new MethodModel(member.Name, kind, returnType, returnTypeScript, shape, parameters));
+			methods.Add(new MethodModel(
+				member.Name,
+				kind,
+				returnType,
+				returnTypeScript,
+				shape,
+				parameters,
+				AuthorizationOf(member),
+				HasAllowAnonymous(member)));
 		}
 
 		if (methods.Count == 0) return null;
@@ -133,8 +145,79 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 			$"{type.Name}_{stableId}.SvelteRemote.g.cs",
 			methods.ToArray(),
 			duplicate?.Key,
-			duplicateSymbol?.Locations.FirstOrDefault());
+			duplicateSymbol?.Locations.FirstOrDefault(),
+			AuthorizationOf(type),
+			HasAllowAnonymous(type));
 	}
+
+	/// <summary>
+	/// Lifts [Authorize] onto the descriptor as plain data. The HTTP endpoints turn it back
+	/// into endpoint metadata and the SSR bridge evaluates it directly, so a method is
+	/// protected the same way no matter which transport reaches it. Must stay behaviourally
+	/// identical to RemoteDescriptors.AuthorizationOf on the reflection path.
+	/// </summary>
+	private static string[] AuthorizationOf(ISymbol symbol)
+	{
+		var results = new List<string>();
+		foreach (var attribute in InheritedAttributes(symbol))
+		{
+			if (!InheritsFrom(attribute.AttributeClass, "Microsoft.AspNetCore.Authorization.AuthorizeAttribute"))
+				continue;
+
+			// [Authorize("policy")] sets Policy positionally; Roles and
+			// AuthenticationSchemes are only ever named arguments.
+			var policy = attribute.ConstructorArguments.Length > 0
+				? attribute.ConstructorArguments[0].Value as string
+				: null;
+			var roles = NamedString(attribute, "Roles");
+			var schemes = NamedString(attribute, "AuthenticationSchemes");
+			policy = NamedString(attribute, "Policy") ?? policy;
+
+			results.Add($"new global::SvelteNet.Remote.RemoteAuthorization({Literal(policy)}, {Literal(roles)}, {Literal(schemes)})");
+		}
+
+		return results.ToArray();
+	}
+
+	private static bool HasAllowAnonymous(ISymbol symbol) =>
+		InheritedAttributes(symbol).Any(a =>
+			InheritsFrom(a.AttributeClass, "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute"));
+
+	/// <summary>
+	/// Attributes on the symbol and everything it inherits from. [Authorize] and
+	/// [AllowAnonymous] are both Inherited = true, and MVC and the reflection fallback
+	/// (which uses GetCustomAttributes(inherit: true)) honour that. GetAttributes() alone
+	/// sees only directly-applied attributes, so a service deriving from a secured base
+	/// would generate a descriptor with no policy at all — silently unprotected on the
+	/// path everyone runs.
+	/// </summary>
+	private static IEnumerable<AttributeData> InheritedAttributes(ISymbol symbol)
+	{
+		switch (symbol)
+		{
+			case INamedTypeSymbol type:
+				for (var current = type; current is not null; current = current.BaseType)
+					foreach (var attribute in current.GetAttributes())
+						yield return attribute;
+				break;
+
+			case IMethodSymbol method:
+				for (var current = method; current is not null; current = current.OverriddenMethod)
+					foreach (var attribute in current.GetAttributes())
+						yield return attribute;
+				break;
+
+			default:
+				foreach (var attribute in symbol.GetAttributes()) yield return attribute;
+				break;
+		}
+	}
+
+	private static string? NamedString(AttributeData attribute, string name) =>
+		attribute.NamedArguments.FirstOrDefault(a => a.Key == name).Value.Value as string;
+
+	private static string Literal(string? value) =>
+		value is null ? "null" : "\"" + EscapeString(value) + "\"";
 
 	private static uint StableHash(string value)
 	{
@@ -294,11 +377,15 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 			sb.AppendLine($"\t\t\t\t\t\tstatic (service, args) => Invoke_{method.Name}(({model.FullTypeName})service, args),");
 			sb.AppendLine($"\t\t\t\t\t\t{returnTypeOf},");
 			sb.AppendLine($"\t\t\t\t\t\tnew global::SvelteNet.Remote.RemoteParameter[] {{ {parameters} }},");
-			sb.AppendLine($"\t\t\t\t\t\t\"{EscapeString(method.TypeScriptReturnType)}\"),");
+			sb.AppendLine($"\t\t\t\t\t\t\"{EscapeString(method.TypeScriptReturnType)}\",");
+			sb.AppendLine($"\t\t\t\t\t\t{AuthorizationArray(method.Authorization)},");
+			sb.AppendLine($"\t\t\t\t\t\t{(method.AllowAnonymous ? "true" : "false")}),");
 		}
 
 		sb.AppendLine("\t\t\t\t},");
-		sb.AppendLine("\t\t\t\tIsGenerated: true));");
+		sb.AppendLine("\t\t\t\tIsGenerated: true,");
+		sb.AppendLine($"\t\t\t\t{AuthorizationArray(model.Authorization)},");
+		sb.AppendLine($"\t\t\t\t{(model.AllowAnonymous ? "true" : "false")}));");
 		sb.AppendLine("\t\t}");
 
 		foreach (var method in model.Methods)
@@ -336,6 +423,11 @@ public sealed class SvelteRemoteGenerator : IIncrementalGenerator
 		sb.AppendLine("}");
 		return sb.ToString();
 	}
+
+	private static string AuthorizationArray(string[] authorization) =>
+		authorization.Length == 0
+			? "null"
+			: $"new global::SvelteNet.Remote.RemoteAuthorization[] {{ {string.Join(", ", authorization)} }}";
 
 	private static string EscapeString(string value) =>
 		value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");

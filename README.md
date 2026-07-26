@@ -45,13 +45,15 @@ Run `dotnet build` once. The bundled analyzer and build target generate ambient 
 - [MVC views](docs/mvc.md) — `[SvelteComponent]` typed rendering, `@Html.Svelte`
 - [Remote functions](docs/remote-functions.md) — `[Query]`/`[Command]`/`[Form]`, the typed client, source-generated dispatch
 - [SSR renderers](docs/ssr.md) — opt-in Jint, Node.js, Bun, and custom renderers
+- [Security](docs/security.md) — authorization, CSRF, and what the SSR bridge enforces
 - [Options](docs/options.md) — shared and renderer-specific configuration
 
 ## Repository layout
 
 ```
-src/       SvelteNet.Core          — renderer, Jint SSR engine, TypeScript generation (NuGet)
+src/       SvelteNet.Core          — renderer, serialization contract, TypeScript generation (NuGet)
            SvelteNet.AspNetCore    — ASP.NET integration, Node/Bun SSR, remote endpoints (NuGet)
+           SvelteNet.Jint          — in-process Jint server rendering (NuGet, optional)
            SvelteNet.Generators    — Roslyn source generator for remote dispatch
            SvelteNet.Build         — MSBuild target: dotnet build generates the TS types
            SvelteNet.FluentValidation — FluentValidation adapter for the validation pipeline

@@ -9,6 +9,7 @@ Choose one renderer by chaining it from the builder:
 
 ```csharp
 // In-process JavaScript; no external runtime is required.
+// Requires the SvelteNet.Jint package.
 builder.Services
     .AddSvelteNet()
     .AddJintSSR();
@@ -34,6 +35,13 @@ Build and run with a non-Development environment to inspect server-rendered outp
 
 ## Jint
 
+Jint ships as a separate package so that client-only applications, and applications
+rendering through Node.js or Bun, do not carry a JavaScript engine they never load:
+
+```sh
+dotnet add package SvelteNet.Jint
+```
+
 Jint runs inside the ASP.NET process and needs no Node.js installation. Engines cache
 their imported module graph and are pooled across renders:
 
@@ -42,11 +50,25 @@ builder.Services.AddSvelteNet().AddJintSSR(options =>
 {
     options.Timeout = TimeSpan.FromSeconds(5);
     options.MaxPooledEngines = Environment.ProcessorCount;
+    options.MaxConcurrentRenders = Environment.ProcessorCount;
 });
 ```
 
 Awaited remote queries use `ISvelteSsrFetchHandler` to dispatch directly to the
-generated C# remote descriptor. There is no loopback HTTP request.
+generated C# remote descriptor. There is no loopback HTTP request. The bridge enforces
+the same authorization the HTTP endpoint would — see [Security](security.md).
+
+Two consequences of running a synchronous engine in an asynchronous host:
+
+- **Renders occupy a worker thread.** Jint cannot suspend a running script to await a
+  task, so the fetch bridge blocks for the duration of each awaited query. `RenderAsync`
+  moves that work off the request thread and caps it with `MaxConcurrentRenders`, so the
+  number of parked threads stays bounded however much traffic arrives. Renders beyond the
+  cap queue rather than starving the pool.
+- **Pooled engines share module state.** An engine keeps its module graph — and any
+  module-level state in the SSR bundle — alive across renders and across users. Do not
+  hold per-request state at module scope in a `.svelte` file. The Node.js and Bun
+  renderers start a fresh process per render and do not behave this way.
 
 ## Node.js and Bun
 
@@ -72,9 +94,9 @@ builder.Services.AddSvelteNet().AddBunJsSSR(options =>
 ```
 
 `node` or `bun` must be installed on the production host and available on `PATH`
-unless an absolute `ExecutablePath` is supplied. The engine verifies the CLI when it
-is first resolved from dependency injection and throws an actionable error if it
-cannot run it.
+unless an absolute `ExecutablePath` is supplied. The engine verifies the CLI on its
+first render — resolving a singleton from DI should not spawn a process — and throws an
+actionable error if it cannot run it.
 
 During an HTTP render, relative fetches are resolved against an address reported by
 the running ASP.NET server, never the incoming `Host` header. Set `BaseUrl` to a
@@ -93,7 +115,7 @@ worker pool, embedded runtime, remote service, or any other host:
 ```csharp
 public sealed class MyRenderer : ISvelteSsrEngine
 {
-    public SsrResult Render(
+    public ValueTask<SsrResult> RenderAsync(
         string componentModule,
         string renderModule,
         string? propsJson,
@@ -122,6 +144,12 @@ builder.Services
 
 All renderer registrations are singletons. A custom renderer must therefore be
 thread-safe or manage its own worker/engine pool.
+
+Rendering is asynchronous because a server render can await remote queries, which reach
+databases and HTTP services. Never block the calling thread waiting on that work: a
+synchronous JavaScript runtime should move its render onto a bounded worker, the way the
+Jint engine does. An in-process renderer that wants the no-round-trip query bridge adds
+it with `.AddInProcessSsrFetchBridge()`.
 
 ## Build and deployment
 

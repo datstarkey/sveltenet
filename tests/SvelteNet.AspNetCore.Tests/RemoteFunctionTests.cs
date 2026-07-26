@@ -89,17 +89,107 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 		Assert.True(json.TryGetProperty("byPriority", out _));
 	}
 
+	/// <summary>
+	/// The X-SvelteNet header is only a CSRF defence while no CORS policy lets a foreign
+	/// origin send it, and AllowAnyHeader()/AllowAnyOrigin() is common. A browser always
+	/// attaches Origin cross-origin, so a foreign Origin is refused regardless.
+	/// </summary>
+	[Fact]
+	public async Task Commands_reject_a_foreign_origin_even_with_the_header()
+	{
+		var request = Command("TodoApi/ToggleTodo", new { id = 1 });
+		request.Headers.Add("Origin", "https://evil.example");
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+	}
+
+	[Fact]
+	public async Task Commands_accept_their_own_origin()
+	{
+		var client = _factory.CreateClient();
+		var request = Command("TodoApi/ToggleTodo", new { id = 1 });
+		request.Headers.Add("Origin", client.BaseAddress!.GetLeftPart(UriPartial.Authority));
+
+		var response = await client.SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+	}
+
+	/// <summary>A caller with no Origin is not a browser, so it cannot be CSRF'd.</summary>
+	[Fact]
+	public async Task Commands_without_an_origin_still_work()
+	{
+		var response = await _factory.CreateClient().SendAsync(Command("TodoApi/ToggleTodo", new { id = 1 }));
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+	}
+
+	/// <summary>
+	/// Behind a TLS-terminating proxy without UseForwardedHeaders, Request.Scheme is http
+	/// while the browser sends an https Origin. Comparing schemes rejected every POST from
+	/// such a deployment; the authority is what identifies the origin.
+	/// </summary>
+	[Fact]
+	public async Task Commands_accept_their_origin_when_the_proxy_terminated_tls()
+	{
+		var client = _factory.CreateClient();
+		var request = Command("TodoApi/ToggleTodo", new { id = 1 });
+		request.Headers.Add("Origin", $"https://{client.BaseAddress!.Authority}");
+
+		var response = await client.SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+	}
+
+	/// <summary>
+	/// ContentLength is null for chunked and HTTP/2 bodies, so it cannot tell "no body"
+	/// from "streamed body". A no-argument command sent without a body must still run.
+	/// </summary>
+	[Fact]
+	public async Task No_argument_commands_work_without_a_request_body()
+	{
+		var request = new HttpRequestMessage(HttpMethod.Post, "/_sveltenet/remote/WeatherApi/RefreshForecasts")
+		{
+			Headers = { { "X-SvelteNet", "true" } }
+		};
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+		Assert.Contains("Refreshed at", await response.Content.ReadAsStringAsync());
+	}
+
+	[Fact]
+	public async Task An_empty_streamed_body_is_treated_as_no_arguments()
+	{
+		var request = new HttpRequestMessage(HttpMethod.Post, "/_sveltenet/remote/WeatherApi/RefreshForecasts")
+		{
+			Content = new UnknownLengthJsonContent(string.Empty),
+			Headers = { { "X-SvelteNet", "true" } }
+		};
+		request.Content.Headers.ContentType = new("application/json");
+
+		var response = await _factory.CreateClient().SendAsync(request);
+
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+	}
+
 	[Fact]
 	public async Task Queries_reject_other_kinds_and_posts()
 	{
 		var client = _factory.CreateClient();
 
+		// One endpoint is mapped per remote method (so each carries its own authorization
+		// metadata), which makes the wrong verb a routing-level 405 rather than a 404.
 		// a command over GET
-		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/TodoApi/ToggleTodo")).StatusCode);
+		Assert.Equal(HttpStatusCode.MethodNotAllowed, (await client.GetAsync("/_sveltenet/remote/TodoApi/ToggleTodo")).StatusCode);
 		// a query over POST
-		Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(Command("TodoApi/GetStats", new { }))).StatusCode);
-		// unknown method
+		Assert.Equal(HttpStatusCode.MethodNotAllowed, (await client.SendAsync(Command("TodoApi/GetStats", new { }))).StatusCode);
+		// unknown method — no endpoint at all
 		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/TodoApi/Nope")).StatusCode);
+		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/NoSuchApi/GetTodos")).StatusCode);
 	}
 
 	[Fact]

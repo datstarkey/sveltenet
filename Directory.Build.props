@@ -4,9 +4,36 @@
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <!-- Shared NuGet metadata. Harmless on non-packable projects. -->
+    <PropertyGroup>
+        <Version>0.1.0</Version>
         <Authors>Jake Starkey</Authors>
+        <Company>Jake Starkey</Company>
+        <Copyright>Copyright (c) 2026 Jake Starkey</Copyright>
         <PackageProjectUrl>https://github.com/datstarkey/sveltenet</PackageProjectUrl>
         <RepositoryUrl>https://github.com/datstarkey/sveltenet</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageTags>svelte;aspnetcore;razor-pages;mvc;ssr;islands;vite</PackageTags>
+    </PropertyGroup>
+
+    <!-- Source Link: debuggable, reproducible packages. -->
+    <PropertyGroup>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    </PropertyGroup>
+
+    <!-- XML docs ship for IntelliSense; CS1591 stays off so undocumented members
+         don't turn into build noise. -->
+    <PropertyGroup>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
     </PropertyGroup>
 
 </Project>

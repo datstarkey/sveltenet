@@ -123,6 +123,17 @@ sveltenet({ experimentalAsync: true })
 
 `refresh()` (and `command(...).updates(...)`) re-runs the awaits automatically.
 
+After a successful form submit every query on the page is refreshed. That is right for a
+small page and one request per query on a large one, so `form()` takes an `updates`
+callback to narrow it:
+
+```ts
+static readonly CreateTodo = form<Todo, { label: string; priority: Priority }>(
+    'TodoApi/CreateTodo',
+    { updates: () => [TodoApi.GetTodos()] },
+);
+```
+
 **SSR is opt-in** with `AddJintSSR()`, `AddNodeSSR()`, `AddBunJsSSR()`, or a
 custom renderer. Jint's in-process fetch bridge (`ISvelteSsrFetchHandler` /
 `RemoteSsrFetchHandler`) routes `fetch` calls straight to the generated `[Query]`

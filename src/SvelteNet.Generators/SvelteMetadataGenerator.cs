@@ -70,14 +70,19 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 		{
 			if (!CanReference(type)) continue;
 
-			if (IsPage(type))
+			var isPage = IsPage(type);
+			if (isPage)
 			{
 				var properties = PageProperties(type).Select(Property).ToArray();
 				pages.Add(new PageModel(FullType(type), PageComponent(type), properties));
 				foreach (var property in PageProperties(type)) roots.Add(property.Type);
 			}
 
-			var componentAttribute = Attribute(type, "SvelteNet.SvelteComponentAttribute");
+			// On a page, [SvelteComponent] only overrides the component path (PageComponent
+			// reads it) — the page is never passed as a view model. Treating it as one made
+			// the walk below descend through PageModel and emit HttpContext, ModelState and
+			// the rest of ASP.NET as ambient global interfaces.
+			var componentAttribute = isPage ? null : Attribute(type, "SvelteNet.SvelteComponentAttribute");
 			if (componentAttribute is not null)
 			{
 				var component = componentAttribute.ConstructorArguments.Length > 0
@@ -90,7 +95,12 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 			if (Attribute(type, "SvelteNet.SvelteRemoteAttribute") is not null)
 			{
 				var remoteMethods = type.GetMembers().OfType<IMethodSymbol>().Where(IsRemoteMethod).ToArray();
-				if (!remoteMethods.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+				// SvelteRemoteGenerator emits no dispatcher for a service with no remote
+				// methods, so calling one here would not compile. That happens whenever
+				// [SvelteRemote] is added before the first method, or the methods are
+				// commented out.
+				if (remoteMethods.Length > 0 &&
+					!remoteMethods.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
 				{
 					var fullName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 					remoteInitializers.Add($"{type.Name}RemoteDispatcher_{StableHash(fullName):x8}.Init();");
@@ -225,6 +235,7 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 			return;
 		}
 		if (IsSimple(named) || IsCollection(named) || IsDictionary(named) || named.SpecialType != SpecialType.None) return;
+		if (IsFrameworkType(named)) return;
 
 		var definition = named.OriginalDefinition;
 		if (!result.Add(definition)) return;
@@ -303,13 +314,23 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 		else if (SimpleType(named) is { } simple)
 			result = simple;
 		else if (TryDictionary(named, out var key, out var value))
-			result = $"{{ [key: {DictionaryKeyType(key)}]: {TypeScriptType(value, IsNullable(value, value.NullableAnnotation))}; }}";
+		{
+			var valueType = TypeScriptType(value, IsNullable(value, value.NullableAnnotation));
+			// Enum keys serialize fine, but a union type cannot be an index signature;
+			// Partial<Record<...>> says "some subset of these keys", which is the payload.
+			result = StripNullable(key).TypeKind == TypeKind.Enum
+				? $"Partial<Record<{TypeScriptType(key, includeNull: false)}, {valueType}>>"
+				: $"{{ [key: {DictionaryKeyType(key)}]: {valueType}; }}";
+		}
 		else if (TryCollection(named, out var element))
 			result = $"{TypeScriptType(element, IsNullable(element, element.NullableAnnotation))}[]";
+		// Framework types are never declared, so naming one would leave a dangling reference.
+		else if (IsFrameworkType(named))
+			result = "unknown";
 		else if (named.IsGenericType)
-			result = $"{named.Name}<{string.Join(", ", named.TypeArguments.Select(a => TypeScriptType(a, IsNullable(a, a.NullableAnnotation))))}>";
+			result = $"{Placeholder(named)}<{string.Join(", ", named.TypeArguments.Select(a => TypeScriptType(a, IsNullable(a, a.NullableAnnotation))))}>";
 		else
-			result = named.Name;
+			result = Placeholder(named);
 
 		return includeNull && result != "null" ? $"{result} | null" : result;
 	}
@@ -322,15 +343,30 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 			SpecialType.System_Byte or SpecialType.System_SByte or
 				SpecialType.System_Int16 or SpecialType.System_UInt16 or
 				SpecialType.System_Int32 or SpecialType.System_UInt32 or
-				SpecialType.System_Int64 or SpecialType.System_UInt64 or
-				SpecialType.System_Single or SpecialType.System_Double or
-				SpecialType.System_Decimal => "number",
+				SpecialType.System_Single or SpecialType.System_Double => "number",
+			// 64-bit integers and decimals exceed what a JavaScript number can hold
+			// exactly, so SvelteJson serializes them as strings. See LargeNumberConverter.
+			SpecialType.System_Int64 or SpecialType.System_UInt64 or
+				SpecialType.System_Decimal => "string",
 			SpecialType.System_Object => "unknown",
-			_ when type.TypeKind == TypeKind.Enum => type.Name,
+			_ when type.TypeKind == TypeKind.Enum => Placeholder(type),
 			_ when type.ToDisplayString() is "System.Guid" or "System.DateTime" or "System.DateTimeOffset" or
 				"System.DateOnly" or "System.TimeOnly" or "System.TimeSpan" or "System.Uri" => "string",
 			_ => null
 		};
+
+	/// <summary>
+	/// BCL and ASP.NET types are not application models. They are never declared, so a
+	/// property must not be typed as one — that would reference an interface that does not
+	/// exist. Anything a component genuinely needs should be a DTO the app owns.
+	/// </summary>
+	private static bool IsFrameworkType(INamedTypeSymbol type)
+	{
+		var ns = type.ContainingNamespace?.ToDisplayString();
+		return ns is not null &&
+			(ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal) ||
+			 ns == "Microsoft" || ns.StartsWith("Microsoft.", StringComparison.Ordinal));
+	}
 
 	private static bool IsSimple(INamedTypeSymbol type) =>
 		SimpleType(type) is not null || type.ToDisplayString() == "System.Threading.CancellationToken";
@@ -356,11 +392,14 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 
 	private static bool IsDictionary(INamedTypeSymbol type) => TryDictionary(type, out _, out _);
 
+	/// <summary>
+	/// 64-bit keys are excluded from the number index signature for the same reason
+	/// 64-bit values are: they do not survive a JavaScript number.
+	/// </summary>
 	private static string DictionaryKeyType(ITypeSymbol key) =>
 		key.SpecialType is SpecialType.System_Byte or SpecialType.System_SByte or
 			SpecialType.System_Int16 or SpecialType.System_UInt16 or
-			SpecialType.System_Int32 or SpecialType.System_UInt32 or
-			SpecialType.System_Int64 or SpecialType.System_UInt64 ? "number" : "string";
+			SpecialType.System_Int32 or SpecialType.System_UInt32 ? "number" : "string";
 
 	private static void CollectImports(ITypeSymbol type, HashSet<string> imports)
 	{
@@ -373,7 +412,7 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 		if (type is not INamedTypeSymbol named) return;
 		foreach (var argument in named.TypeArguments) CollectImports(argument, imports);
 		if (!IsSimple(named) && !IsCollection(named) && !IsDictionary(named) && named.SpecialType == SpecialType.None)
-			imports.Add(named.Name);
+			imports.Add(Placeholder(named));
 	}
 
 	private static ITypeSymbol StripNullable(ITypeSymbol type) =>
@@ -408,7 +447,23 @@ public sealed class SvelteMetadataGenerator : IIncrementalGenerator
 	}
 
 	private static string TypeScriptName(INamedTypeSymbol type) =>
-		type.Arity == 0 ? type.Name : $"{type.Name}<{string.Join(", ", type.TypeParameters.Select(p => p.Name))}>";
+		type.Arity == 0
+			? Placeholder(type)
+			: $"{Placeholder(type)}<{string.Join(", ", type.TypeParameters.Select(p => p.Name))}>";
+
+	/// <summary>
+	/// A namespace-qualified stand-in for the type's TypeScript name. No generator can see
+	/// the whole application, so it cannot know whether the short name is free; the
+	/// scaffolder resolves these to final names once, across every assembly.
+	/// See SvelteNet.TypeGen.TypeScriptNaming.
+	/// </summary>
+	private static string Placeholder(INamedTypeSymbol type)
+	{
+		var ns = type.ContainingNamespace;
+		return ns is null || ns.IsGlobalNamespace
+			? type.Name
+			: ns.ToDisplayString().Replace('.', '_') + "_" + type.Name;
+	}
 
 	private static string JsonName(IPropertySymbol property)
 	{

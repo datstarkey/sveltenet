@@ -8,7 +8,7 @@ public class SvelteNetExtensionsTests
 {
 	private sealed class CustomEngine : ISvelteSsrEngine
 	{
-		public SsrResult Render(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default) => new();
+		public ValueTask<SsrResult> RenderAsync(string componentModule, string renderModule, string? propsJson, CancellationToken cancellationToken = default) => ValueTask.FromResult(new SsrResult());
 	}
 
 	[Fact]

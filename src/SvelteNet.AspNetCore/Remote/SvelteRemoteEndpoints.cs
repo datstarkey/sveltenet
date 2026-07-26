@@ -12,22 +12,17 @@ internal static class SvelteRemoteEndpoints
 		if (!TryResolve(context, service, method, RemoteKind.Query, out var serviceType, out var descriptor, out var instance))
 			return Results.NotFound();
 
-		JsonElement? json = null;
-		if (context.Request.Query.TryGetValue("args", out var raw) && raw.Count > 0)
-		{
-			try
-			{
-				json = JsonDocument.Parse(raw[0]!).RootElement;
-			}
-			catch (JsonException)
-			{
-				return Results.Problem(detail: "Malformed args.", statusCode: StatusCodes.Status400BadRequest);
-			}
-		}
+		// JsonDocument rents pooled buffers, so it is disposed once binding is done —
+		// RemoteArguments only reads it during Invoke.
+		using JsonDocument? document = context.Request.Query.TryGetValue("args", out var raw) && raw.Count > 0
+			? TryParse(raw[0]!)
+			: null;
+		if (document is null && context.Request.Query.ContainsKey("args"))
+			return Results.Problem(detail: "Malformed args.", statusCode: StatusCodes.Status400BadRequest);
 
 		return await Run(descriptor, instance, new RemoteArguments
 		{
-			Json = json,
+			Json = document?.RootElement,
 			CancellationToken = context.RequestAborted,
 			Validation = BuildValidation(context.RequestServices, serviceType, descriptor)
 		});
@@ -72,28 +67,61 @@ internal static class SvelteRemoteEndpoints
 		if (!enhanced)
 			return Results.Problem(detail: "Missing X-SvelteNet header.", statusCode: StatusCodes.Status400BadRequest);
 
+		// The X-SvelteNet header alone is a CSRF defence only while no CORS policy lets a
+		// foreign origin send it. AllowAnyHeader()/AllowAnyOrigin() is common enough that
+		// the header cannot be the only check: a browser always attaches Origin to a
+		// cross-origin request, so a present-but-foreign Origin is rejected outright.
+		// Absent Origin means a non-browser caller, which cannot be CSRF'd.
+		if (!IsOriginAllowed(context))
+			return Results.Problem(detail: "Cross-origin request rejected.", statusCode: StatusCodes.Status400BadRequest);
+
 		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandServiceType, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
 
-		JsonElement? body = null;
-		if (context.Request.ContentLength != 0)
+		// ContentLength is null for chunked bodies and for HTTP/2 requests that just close
+		// the stream, so it cannot distinguish "no body" from "streamed body". Read it and
+		// let an empty payload mean no arguments — a no-argument command sent by anything
+		// other than the bundled client has no reason to send "{}".
+		JsonDocument? body = null;
+		try
 		{
-			try
+			if (context.Request.ContentLength is not 0)
 			{
-				body = (await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)).RootElement;
-			}
-			catch (JsonException)
-			{
-				return Results.Problem(detail: "The JSON request body is malformed.", statusCode: StatusCodes.Status400BadRequest);
+				using var buffer = new MemoryStream();
+				await context.Request.Body.CopyToAsync(buffer, context.RequestAborted);
+				if (buffer.Length > 0)
+				{
+					buffer.Position = 0;
+					body = await JsonDocument.ParseAsync(buffer, cancellationToken: context.RequestAborted);
+				}
 			}
 		}
-
-		return await Run(commandDescriptor, commandInstance, new RemoteArguments
+		catch (JsonException)
 		{
-			Json = body,
-			CancellationToken = context.RequestAborted,
-			Validation = BuildValidation(context.RequestServices, commandServiceType, commandDescriptor)
-		});
+			return Results.Problem(detail: "The JSON request body is malformed.", statusCode: StatusCodes.Status400BadRequest);
+		}
+
+		using (body)
+		{
+			return await Run(commandDescriptor, commandInstance, new RemoteArguments
+			{
+				Json = body?.RootElement,
+				CancellationToken = context.RequestAborted,
+				Validation = BuildValidation(context.RequestServices, commandServiceType, commandDescriptor)
+			});
+		}
+	}
+
+	private static JsonDocument? TryParse(string json)
+	{
+		try
+		{
+			return JsonDocument.Parse(json);
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	private static async Task<IResult> Run(RemoteMethodDescriptor descriptor, object instance, RemoteArguments args)
@@ -153,6 +181,17 @@ internal static class SvelteRemoteEndpoints
 		};
 	}
 
+	/// <summary>
+	/// True unless the request carries an Origin that is not this application's. A missing
+	/// Origin is allowed — only browsers set it, and only a browser can be made to forge a
+	/// request with the user's cookies.
+	/// </summary>
+	private static bool IsOriginAllowed(HttpContext context)
+	{
+		var origin = context.Request.Headers.Origin.ToString();
+		return origin.Length == 0 || IsRequestOrigin(context, origin);
+	}
+
 	private static bool IsSameOrigin(HttpContext context)
 	{
 		var origin = context.Request.Headers.Origin.ToString();
@@ -162,9 +201,16 @@ internal static class SvelteRemoteEndpoints
 		return referer.Length > 0 && IsRequestOrigin(context, referer);
 	}
 
+	/// <summary>
+	/// Compares host and port only, not scheme. Behind a TLS-terminating proxy without
+	/// UseForwardedHeaders, Request.Scheme is "http" while the browser sends an https
+	/// Origin — comparing schemes rejected every POST from a correctly configured
+	/// deployment. The authority is what identifies the origin for CSRF purposes; an
+	/// attacker cannot host on the application's own host and port.
+	/// </summary>
 	private static bool IsRequestOrigin(HttpContext context, string value) =>
 		Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-		string.Equals(uri.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+		uri.Scheme is "http" or "https" &&
 		string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase);
 
 	private static string LocalReturnUrl(HttpContext context)

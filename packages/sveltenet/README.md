@@ -55,10 +55,18 @@ slices.
     let data = $derived(serverData);
 </script>
 
-<form method="post" {@attach enhance({ onUpdate: (d) => (data = d) })}>
+<form
+    method="post"
+    {@attach enhance({ token: () => data.antiforgeryToken, onUpdate: (d) => (data = d) })}
+>
 ```
 
 Enhanced submits go over `fetch` with an `X-SvelteNet` header; the .NET side responds with fresh JSON data (following post/redirect/get automatically) and `onUpdate` applies it to the island — no page reload. Without JS the form posts normally.
+
+`token` is sent as the `RequestVerificationToken` header, so no form needs a hidden
+antiforgery input; pass a getter so it survives the data prop being replaced. A form that
+already renders `__RequestVerificationToken` works without it. Submits are ignored while
+one is in flight, so a double-click cannot post twice.
 
 - `sveltenet/server` — `renderComponent(component, props)`, executed only when the
   .NET application opts into Jint, Node.js, Bun, or a custom SSR engine.

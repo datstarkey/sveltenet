@@ -9,11 +9,12 @@ Vite root configuration:
 | `PagesPath` | `pagesPath` (optional legacy filter) | `Svelte` | .NET convention/scaffolding root; Vite scans project-wide when `pagesPath` is omitted |
 | `ClientOutput` | `clientOutDir` | `wwwroot/client` | Vite client build outDir |
 | `ServerOutput` | `serverOutDir` | `.svelte-net/server` | Vite SSR build outDir (never public) |
-| `ClientPublicPath` | — | `/client` | URL prefix for built assets |
+| `ClientPublicPath` | — | derived | URL prefix for built assets. Derived from `ClientOutput` minus `WebRoot`; set explicitly only for a CDN |
+| `WebRoot` | — | `wwwroot` | Web root segment stripped when deriving `ClientPublicPath` |
 | `DevServerUrl` | — | `http://localhost:5173` | Vite dev server |
 | `EnableSsr` | — | `true` | Global switch for an explicitly registered SSR renderer; registering no renderer always means no SSR |
 | `EnableCsr` | — | `true` | Global client mount/hydration switch |
-| `IsDev` | — | auto | From `IWebHostEnvironment.IsDevelopment()` |
+| `IsDev` | — | auto | From `IWebHostEnvironment.IsDevelopment()`, falling back to `ASPNETCORE_ENVIRONMENT` |
 | `EnableScaffolding` | — | `false` | Startup scaffolding fallback; normally `dotnet build` generates types via `SvelteNet.Build.targets` |
 | `EnableReflectionFallback` | — | `false` | Opt-in compatibility path for apps built without the analyzer |
 | `ApplicationAssemblies` | — | calling assembly | Discovery scope for `[SvelteRemote]`, `[SvelteComponent]`, and `SveltePage` types |
@@ -36,9 +37,32 @@ This supports `Svelte/`, Razor/MVC colocation, and vertical slices such as
 builder.Services.AddSvelteNet(configure: null, typeof(MyApi).Assembly, typeof(Program).Assembly);
 ```
 
+Pass them explicitly whenever `AddSvelteNet()` is wrapped in an extension method of your
+own — the default scope is the *calling* assembly, which is then your wrapper rather than
+the application.
+
 For a legacy app that deliberately omits the analyzer, set
 `EnableReflectionFallback = true`. Generated and fallback dispatchers share the same
 binding and validation pipeline, but the fallback is not the default.
+
+## Generated type names
+
+Model interfaces are emitted as ambient globals, so their names have to be unique across
+the application and must not shadow anything in `lib.dom.d.ts`. The short CLR name is used
+where that is safe; where it is not, the name is qualified with namespace segments:
+
+```csharp
+namespace App.Orders  { public class Item { } }   // → OrdersItem
+namespace App.Catalog { public class Item { } }   // → CatalogItem
+namespace App.Storage { public class File { } }   // → StorageFile (File is a DOM global)
+```
+
+`[SvelteType]` overrides the choice outright:
+
+```csharp
+[SvelteType("CatalogEntry")]
+public class Item { }
+```
 
 ## SSR renderer options
 
@@ -47,7 +71,7 @@ instead of expanding `SvelteOptions`:
 
 | Registration | Options | Defaults |
 |---|---|---|
-| `AddJintSSR(...)` | `Timeout`, `MaxPooledEngines` | 10 seconds, processor count |
+| `AddJintSSR(...)` (SvelteNet.Jint package) | `Timeout`, `MaxPooledEngines`, `MaxConcurrentRenders` | 10 seconds, processor count, processor count |
 | `AddNodeSSR(...)` | `ExecutablePath`, `Timeout`, `BaseUrl`, `ForwardHeaders` | `node`, 10 seconds, server address, auth + cookie |
 | `AddBunJsSSR(...)` | `ExecutablePath`, `Timeout`, `BaseUrl`, `ForwardHeaders` | `bun`, 10 seconds, server address, auth + cookie |
 | `AddCustomRenderer(...)` | Owned by the custom implementation | — |

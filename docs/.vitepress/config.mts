@@ -25,6 +25,7 @@ export default defineConfig({
 					{ text: 'MVC controllers', link: '/mvc' },
 					{ text: 'Remote functions', link: '/remote-functions' },
 					{ text: 'SSR renderers', link: '/ssr' },
+					{ text: 'Security', link: '/security' },
 					{ text: 'Options', link: '/options' },
 				],
 			},

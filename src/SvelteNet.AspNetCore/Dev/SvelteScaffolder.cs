@@ -30,10 +30,13 @@ public static class SvelteScaffolder
 		var generatedTypesDir = Path.Combine(generatedDir, "types");
 		Directory.CreateDirectory(svelteDir);
 		Directory.CreateDirectory(generatedDir);
-		File.Delete(Path.Combine(generatedDir, "types.d.ts"));
-		File.Delete(Path.Combine(generatedDir, "routes.d.ts"));
+
+		// Only .svelte-net is ours to clear. Files under the source directory belong to the
+		// user, even when an earlier version of the scaffolder happened to write them there.
 		if (Directory.Exists(generatedTypesDir)) Directory.Delete(generatedTypesDir, recursive: true);
 		Directory.CreateDirectory(generatedTypesDir);
+		File.Delete(Path.Combine(generatedDir, "types.d.ts"));
+		File.Delete(Path.Combine(generatedDir, "routes.d.ts"));
 
 		var scope = options.ApplicationAssemblies;
 		var explicitTypes = pageTypes is not null || componentModelTypes is not null || remoteServiceTypes is not null;
@@ -68,14 +71,21 @@ public static class SvelteScaffolder
 		}
 
 		var generatedTypes = explicitTypes ? [] : SvelteGeneratedMetadata.GetTypes(scope);
-		WriteSharedTypes(generatedTypesDir, svelteDir, generatedTypes, pages, componentModels, remoteServices);
+
+		// Generators emit namespace-qualified placeholders because none of them can see the
+		// whole application. This is the first point that can: resolve every placeholder to
+		// the shortest name that is unambiguous and does not shadow a DOM global, then
+		// substitute throughout the generated output.
+		var names = ResolveTypeNames(generatedTypes, pages, componentModels, remoteServices);
+
+		WriteSharedTypes(generatedTypesDir, svelteDir, generatedTypes, pages, componentModels, remoteServices, names);
 		foreach (var page in pages)
 		{
-			WritePageTypes(generatedTypesDir, options.PagesPath, page);
+			WritePageTypes(generatedTypesDir, options.PagesPath, page, names);
 			ScaffoldPage(svelteDir, page);
 		}
-		foreach (var model in componentModels) ScaffoldComponentModel(svelteDir, model);
-		WriteRemoteClient(svelteDir, remoteServices);
+		foreach (var model in componentModels) ScaffoldComponentModel(svelteDir, model, names);
+		WriteRemoteClient(svelteDir, generatedDir, remoteServices, names);
 
 		WriteIfMissing(Path.Combine(options.ContentRoot, "vite.config.ts"), SvelteTemplates.ViteConfig(options));
 		WriteIfMissing(Path.Combine(options.ContentRoot, "tsconfig.json"), SvelteTemplates.TsConfig(options));
@@ -85,6 +95,45 @@ public static class SvelteScaffolder
 
 	private static bool InScope(Assembly assembly, IReadOnlyList<Assembly>? scope) =>
 		scope is null or { Count: 0 } || scope.Contains(assembly);
+
+	/// <summary>
+	/// Builds the placeholder → final-name map for every model type that will appear in the
+	/// generated output, honouring [SvelteType] where present.
+	/// </summary>
+	private static IReadOnlyDictionary<string, string> ResolveTypeNames(
+		IReadOnlyList<SvelteGeneratedType> generatedTypes,
+		List<PageSource> pages,
+		List<ComponentSource> componentModels,
+		List<RemoteServiceDescriptor> remoteServices)
+	{
+		var modelTypes = new HashSet<Type>();
+		foreach (var type in generatedTypes) modelTypes.Add(type.Type);
+
+		// The reflection fallback produces no SvelteGeneratedType entries, so walk the same
+		// roots WriteSharedTypes does to find the types it will declare.
+		if (generatedTypes.Count == 0)
+		{
+			var roots = pages.SelectMany(p => p.Properties).Select(p => p.Type)
+				.Concat(componentModels.Select(c => c.Type))
+				.Concat(remoteServices
+					.SelectMany(d => d.Methods)
+					.SelectMany(m => m.Parameters.Select(p => p.Type).Append(m.ReturnType))
+					.Where(t => t != typeof(void) && t != typeof(CancellationToken)))
+				.Distinct()
+				.ToList();
+			foreach (var type in roots.GetAllTypes())
+				modelTypes.Add(type.IsGenericType ? type.GetGenericTypeDefinition() : type);
+		}
+
+		var explicitNames = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var type in modelTypes)
+		{
+			var chosen = TypeScriptNaming.ExplicitName(type);
+			if (chosen is not null) explicitNames[TypeScriptNaming.Placeholder(type)] = chosen;
+		}
+
+		return TypeScriptNaming.Resolve(modelTypes.Select(TypeScriptNaming.Placeholder), explicitNames);
+	}
 
 	private static PageSource ReflectionPage(Type page)
 	{
@@ -112,18 +161,14 @@ public static class SvelteScaffolder
 		IReadOnlyList<SvelteGeneratedType> generatedTypes,
 		List<PageSource> pages,
 		List<ComponentSource> componentModels,
-		List<RemoteServiceDescriptor> remoteServices)
+		List<RemoteServiceDescriptor> remoteServices,
+		IReadOnlyDictionary<string, string> names)
 	{
 		IEnumerable<string> interfaces;
 		if (generatedTypes.Count > 0)
 		{
-			var duplicate = generatedTypes
-				.GroupBy(t => t.TypeScriptName, StringComparer.Ordinal)
-				.FirstOrDefault(g => g.Select(t => t.Type).Distinct().Count() > 1);
-			if (duplicate is not null)
-				throw new InvalidOperationException(
-					$"Generated TypeScript name '{duplicate.Key}' is used by multiple CLR types: " +
-					string.Join(", ", duplicate.Select(d => d.Type.FullName)));
+			// Names no longer collide by construction — TypeScriptNaming.Resolve qualifies
+			// anything ambiguous — so there is nothing to reject here any more.
 			interfaces = generatedTypes
 				.GroupBy(t => t.Type)
 				.Select(g => g.First())
@@ -160,9 +205,7 @@ public static class SvelteScaffolder
 
 		var declarations = interfaces.Select(ToAmbientDeclaration);
 
-		File.Delete(Path.Combine(svelteDir, "types.ts"));
-		File.Delete(Path.Combine(svelteDir, "types.d.ts"));
-		File.WriteAllText(Path.Combine(generatedTypesDir, "models.d.ts"), $$"""
+		WriteGenerated(Path.Combine(generatedTypesDir, "models.d.ts"), $$"""
 /* eslint-disable */
 // Generated by SvelteNet — do not edit.
 
@@ -171,21 +214,21 @@ declare global {
 }
 
 export {};
-""" + Environment.NewLine);
+""" + Environment.NewLine, names);
 	}
 
-	private static void WritePageTypes(string generatedTypesDir, string sourceRoot, PageSource page)
+	private static void WritePageTypes(string generatedTypesDir, string sourceRoot, PageSource page, IReadOnlyDictionary<string, string> names)
 	{
 		var outputPath = Path.Combine(generatedTypesDir, sourceRoot, page.Component + ".d.ts");
 		Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-		File.WriteAllText(outputPath, $$"""
+		WriteGenerated(outputPath, $$"""
 // Generated by SvelteNet — do not edit.
 declare global {
 {{Indent(PageDeclaration(page))}}
 }
 
 export {};
-""" + Environment.NewLine);
+""" + Environment.NewLine, names);
 	}
 
 	private static void ScaffoldPage(string svelteDir, PageSource page)
@@ -195,9 +238,6 @@ export {};
 		var dir = Path.Combine(svelteDir, directory);
 		Directory.CreateDirectory(dir);
 
-		File.Delete(Path.Combine(dir, $"{name}.types.ts"));
-		File.Delete(Path.Combine(dir, $"{name}.types.d.ts"));
-
 		WriteIfMissing(Path.Combine(dir, $"{name}.svelte"), SvelteTemplates.Page(PageDataType(page)));
 	}
 
@@ -205,32 +245,62 @@ export {};
 	/// Scaffolds the component for a [SvelteComponent] model. Its data interface is
 	/// the ambient model type emitted under .svelte-net.
 	/// </summary>
-	private static void ScaffoldComponentModel(string svelteDir, ComponentSource model)
+	private static void ScaffoldComponentModel(string svelteDir, ComponentSource model, IReadOnlyDictionary<string, string> names)
 	{
 		var component = model.Component;
 		var path = Path.Combine(svelteDir, component + ".svelte");
 		Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-		WriteIfMissing(path, SvelteTemplates.ComponentModelPage(model.Type.TsType()));
+		WriteIfMissing(path, SvelteTemplates.ComponentModelPage(TypeScriptNaming.Substitute(model.Type.TsType(), names)));
 	}
 
 	/// <summary>
 	/// Generates one typed client class per remote service, colocated with its vertical
 	/// feature when the service namespace contains ".Features.".
 	/// </summary>
-	private static void WriteRemoteClient(string svelteDir, List<RemoteServiceDescriptor> remoteServices)
+	private static void WriteRemoteClient(string svelteDir, string generatedDir, List<RemoteServiceDescriptor> remoteServices, IReadOnlyDictionary<string, string> names)
 	{
-		foreach (var path in Directory.GetFiles(svelteDir, "*.remote.ts", SearchOption.AllDirectories)
-					 .Concat(Directory.GetFiles(svelteDir, "remote.ts", SearchOption.AllDirectories)))
+		var written = remoteServices
+			.Select(service => WriteRemoteServiceClient(svelteDir, service, names))
+			.ToHashSet(PathComparer);
+
+		// Remove clients for services that no longer exist (renamed, deleted, or moved to
+		// another feature folder). Only files this scaffolder previously wrote are
+		// considered: the manifest is the record of that, so a hand-written file is never
+		// deleted for happening to contain a matching line.
+		foreach (var stale in ReadManifest(generatedDir).Where(path => !written.Contains(path)))
 		{
-			if (File.Exists(path) && File.ReadAllText(path).Contains("Generated by SvelteNet", StringComparison.Ordinal))
-				File.Delete(path);
+			if (File.Exists(stale)) File.Delete(stale);
 		}
 
-		foreach (var service in remoteServices) WriteRemoteServiceClient(svelteDir, service);
+		WriteManifest(generatedDir, written);
 	}
 
-	private static void WriteRemoteServiceClient(string svelteDir, RemoteServiceDescriptor service)
+	private static StringComparer PathComparer =>
+		OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+	/// <summary>
+	/// Records which files the scaffolder owns, so the next run can clean up exactly those
+	/// and nothing else. Lives under .svelte-net, which is generated output.
+	/// </summary>
+	private static string ManifestPath(string generatedDir) =>
+		Path.Combine(generatedDir, "generated-clients.txt");
+
+	private static IEnumerable<string> ReadManifest(string generatedDir)
+	{
+		var path = ManifestPath(generatedDir);
+		return File.Exists(path)
+			? File.ReadAllLines(path).Where(line => line.Length > 0)
+			: [];
+	}
+
+	private static void WriteManifest(string generatedDir, IEnumerable<string> written)
+	{
+		Directory.CreateDirectory(generatedDir);
+		File.WriteAllLines(ManifestPath(generatedDir), written.OrderBy(x => x, StringComparer.Ordinal));
+	}
+
+	private static string WriteRemoteServiceClient(string svelteDir, RemoteServiceDescriptor service, IReadOnlyDictionary<string, string> names)
 	{
 		var featureDirectory = FeatureDirectory(service.ServiceType);
 		var outputDirectory = Path.Combine(svelteDir, featureDirectory);
@@ -267,14 +337,15 @@ export {};
 			? string.Empty
 			: $"import {{ {string.Join(", ", usedKinds)} }} from 'sveltenet/remote';{Environment.NewLine}";
 
-		File.WriteAllText(outputPath, $$"""
+		WriteGenerated(outputPath, $$"""
 /* eslint-disable */
 // Generated by SvelteNet — do not edit.
 {{runtimeImport}}
 export class {{service.Name}} {
 {{string.Join(Environment.NewLine, members)}}
 }
-""" + Environment.NewLine);
+""" + Environment.NewLine, names);
+		return outputPath;
 	}
 
 	private static string FeatureDirectory(Type serviceType)
@@ -397,7 +468,6 @@ interface {{PageDataType(page)}} {
 			.Select(f => $"\"{f}\"")
 			.ToList();
 
-		File.Delete(Path.Combine(svelteDir, "routes.d.ts"));
 		File.WriteAllText(Path.Combine(generatedTypesDir, "routes.d.ts"), $$"""
 // Generated by SvelteNet — do not edit.
 declare global {
@@ -406,6 +476,10 @@ declare global {
 export {};
 """ + Environment.NewLine);
 	}
+
+	/// <summary>Writes generated output with type-name placeholders resolved.</summary>
+	private static void WriteGenerated(string path, string content, IReadOnlyDictionary<string, string> names) =>
+		File.WriteAllText(path, TypeScriptNaming.Substitute(content, names));
 
 	private static void WriteIfMissing(string path, string content)
 	{

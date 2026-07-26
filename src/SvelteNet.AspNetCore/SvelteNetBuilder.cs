@@ -18,14 +18,16 @@ public sealed class SvelteNetBuilder
 	/// <summary>The application service collection.</summary>
 	public IServiceCollection Services { get; }
 
-	/// <summary>Uses the in-process Jint JavaScript engine for server rendering.</summary>
-	public SvelteNetBuilder AddJintSSR(Action<JintSsrOptions>? configure = null)
+	/// <summary>
+	/// Resolves server-side <c>fetch</c> calls straight to the matching [Query] descriptor
+	/// instead of issuing an HTTP request, enforcing the same authorization the endpoint
+	/// would. Needed by any renderer that executes inside this process — AddJintSSR calls
+	/// it; the Node.js and Bun renderers make real loopback requests and do not.
+	/// </summary>
+	public SvelteNetBuilder AddInProcessSsrFetchBridge()
 	{
-		var options = new JintSsrOptions();
-		configure?.Invoke(options);
-		Services.Replace(ServiceDescriptor.Singleton(options));
 		Services.TryAddSingleton<ISvelteSsrFetchHandler, RemoteSsrFetchHandler>();
-		return ReplaceSsrEngine<JintSsrEngine>();
+		return this;
 	}
 
 	/// <summary>

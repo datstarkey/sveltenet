@@ -10,6 +10,7 @@
     <Project Path="src/SvelteNet.Core/SvelteNet.Core.csproj" />
     <Project Path="src/SvelteNet.FluentValidation/SvelteNet.FluentValidation.csproj" />
     <Project Path="src/SvelteNet.Generators/SvelteNet.Generators.csproj" />
+    <Project Path="src/SvelteNet.Jint/SvelteNet.Jint.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SvelteNet.AspNetCore.Tests/SvelteNet.AspNetCore.Tests.csproj" />

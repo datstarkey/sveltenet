@@ -10,16 +10,32 @@ permissions:
 
 jobs:
   dotnet:
-    runs-on: ubuntu-latest
+    # Windows is most of the ASP.NET installed base, and path separators, process
+    # handling and file-system case sensitivity all differ there.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          # net8.0 is a shipped target framework, so its runtime must be present to
+          # test against.
+          dotnet-version: |
+            8.0.x
+            10.0.x
       - run: dotnet restore SvelteNet.slnx
-      - run: dotnet test SvelteNet.slnx --no-restore --configuration Release
+      - run: dotnet test SvelteNet.slnx --no-restore --configuration Release --collect:"XPlat Code Coverage"
       - run: dotnet format SvelteNet.slnx --no-restore --verify-no-changes
+        if: matrix.os == 'ubuntu-latest'
+      # Every shipped package is packed, so missing metadata and broken pack paths
+      # fail CI rather than the release.
+      - run: dotnet pack src/SvelteNet.Core/SvelteNet.Core.csproj --no-restore --configuration Release
       - run: dotnet pack src/SvelteNet.AspNetCore/SvelteNet.AspNetCore.csproj --no-restore --configuration Release
+      - run: dotnet pack src/SvelteNet.FluentValidation/SvelteNet.FluentValidation.csproj --no-restore --configuration Release
+      - run: dotnet pack src/SvelteNet.Jint/SvelteNet.Jint.csproj --no-restore --configuration Release
 
   javascript:
     runs-on: ubuntu-latest
@@ -31,7 +47,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun audit
-      - run: bunx playwright install --with-deps chromium
+      # Run the workspace's own playwright, not bunx. bunx resolves and downloads its
+      # own copy, then installs browsers for *that* version — leaving the pinned
+      # version's browser build absent, so every browser test fails to launch. It also
+      # rewrites bun.lock as a side effect.
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+        working-directory: packages/sveltenet
       - run: bun run test
         working-directory: packages/sveltenet
       - run: bun run check
