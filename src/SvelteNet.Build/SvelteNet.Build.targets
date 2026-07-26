@@ -18,14 +18,29 @@
         <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == ''">$(MSBuildThisFileDirectory)bin\$(Configuration)\net10.0\SvelteNet.Build.dll</SvelteNetBuildTool>
     </PropertyGroup>
 
+    <!-- Inputs/Outputs make this incremental. Without them every build - and every
+         rebuild loop under `dotnet watch` - spawns a process, reloads the app assembly
+         and rewrites the generated files, which in turn retriggers file watchers. The
+         stamp is the marker MSBuild compares against the assembly; the tool's real
+         outputs live under .svelte-net and the source tree. -->
+    <PropertyGroup>
+        <_SvelteNetStampFile>$(IntermediateOutputPath)sveltenet.typegen.stamp</_SvelteNetStampFile>
+    </PropertyGroup>
+
     <Target Name="SvelteNetGenerateTypes"
             AfterTargets="Build"
-            Condition="'$(SvelteNetTypeGen)' == 'true' AND '$(DesignTimeBuild)' != 'true'">
+            Condition="'$(SvelteNetTypeGen)' == 'true' AND '$(DesignTimeBuild)' != 'true'"
+            Inputs="$(TargetPath)"
+            Outputs="$(_SvelteNetStampFile)">
         <PropertyGroup>
             <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' == ''">$(TargetPath)</_SvelteNetApplicationAssemblies>
             <_SvelteNetApplicationAssemblies Condition="'$(SvelteNetApplicationAssemblies)' != ''">$(SvelteNetApplicationAssemblies)</_SvelteNetApplicationAssemblies>
         </PropertyGroup>
         <Exec Command="dotnet exec &quot;$(SvelteNetBuildTool)&quot; &quot;$(TargetPath)&quot; &quot;$(MSBuildProjectDirectory)&quot; &quot;$(SvelteNetPagesPath)&quot; &quot;$(SvelteNetClientOutput)&quot; &quot;$(SvelteNetServerOutput)&quot; &quot;$(_SvelteNetApplicationAssemblies)&quot;" />
+        <Touch Files="$(_SvelteNetStampFile)" AlwaysCreate="true" />
+        <ItemGroup>
+            <FileWrites Include="$(_SvelteNetStampFile)" />
+        </ItemGroup>
     </Target>
 
 </Project>

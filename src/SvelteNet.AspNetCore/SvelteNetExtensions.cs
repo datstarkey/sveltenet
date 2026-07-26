@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Remote;
 using SvelteNet.Remote;
 
@@ -84,7 +85,24 @@ public static class SvelteNetExtensions
 	public static IApplicationBuilder UseSvelteNet(this IApplicationBuilder app)
 	{
 		var options = app.ApplicationServices.GetRequiredService<SvelteOptions>();
-		if (options.EnableScaffolding == true) SvelteScaffolder.Run(options);
+		if (options.EnableScaffolding != true) return app;
+
+		// Scaffolding writes into the content root. That is a development activity; doing
+		// it at boot in Production would mean an app rewriting its own source tree on a
+		// read-only or shared deployment.
+		var environment = app.ApplicationServices.GetService<IWebHostEnvironment>();
+		if (environment is not null && !environment.IsDevelopment())
+		{
+			app.ApplicationServices.GetService<ILoggerFactory>()?
+				.CreateLogger("SvelteNet")
+				.LogWarning(
+					"EnableScaffolding is on but the environment is {Environment}. Startup scaffolding only runs in " +
+					"Development; types are normally generated at build time by SvelteNet.Build.targets.",
+					environment.EnvironmentName);
+			return app;
+		}
+
+		SvelteScaffolder.Run(options);
 		return app;
 	}
 
