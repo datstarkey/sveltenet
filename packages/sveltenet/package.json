@@ -1,7 +1,7 @@
 {
 	"name": "sveltenet",
 	"version": "0.1.0",
-	"description": "Svelte 5 islands for ASP.NET \u2014 Vite plugin and runtime helpers",
+	"description": "Svelte 5 islands for ASP.NET — Vite plugin and runtime helpers",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
