@@ -35,3 +35,13 @@ _ReSharper*/
 node_modules/
 .svelte-net/
 .idea/
+
+# Vite / VitePress build output
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+wwwroot/client/
+
+# NuGet output
+*.nupkg
+*.snupkg
+/artifacts/

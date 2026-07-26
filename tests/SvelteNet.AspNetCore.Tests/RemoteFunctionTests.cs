@@ -94,12 +94,15 @@ public class RemoteFunctionTests : IClassFixture<RemoteFunctionsFactory>
 	{
 		var client = _factory.CreateClient();
 
+		// One endpoint is mapped per remote method (so each carries its own authorization
+		// metadata), which makes the wrong verb a routing-level 405 rather than a 404.
 		// a command over GET
-		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/TodoApi/ToggleTodo")).StatusCode);
+		Assert.Equal(HttpStatusCode.MethodNotAllowed, (await client.GetAsync("/_sveltenet/remote/TodoApi/ToggleTodo")).StatusCode);
 		// a query over POST
-		Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(Command("TodoApi/GetStats", new { }))).StatusCode);
-		// unknown method
+		Assert.Equal(HttpStatusCode.MethodNotAllowed, (await client.SendAsync(Command("TodoApi/GetStats", new { }))).StatusCode);
+		// unknown method — no endpoint at all
 		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/TodoApi/Nope")).StatusCode);
+		Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/_sveltenet/remote/NoSuchApi/GetTodos")).StatusCode);
 	}
 
 	[Fact]

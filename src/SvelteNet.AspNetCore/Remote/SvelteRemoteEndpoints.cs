@@ -12,22 +12,17 @@ internal static class SvelteRemoteEndpoints
 		if (!TryResolve(context, service, method, RemoteKind.Query, out var serviceType, out var descriptor, out var instance))
 			return Results.NotFound();
 
-		JsonElement? json = null;
-		if (context.Request.Query.TryGetValue("args", out var raw) && raw.Count > 0)
-		{
-			try
-			{
-				json = JsonDocument.Parse(raw[0]!).RootElement;
-			}
-			catch (JsonException)
-			{
-				return Results.Problem(detail: "Malformed args.", statusCode: StatusCodes.Status400BadRequest);
-			}
-		}
+		// JsonDocument rents pooled buffers, so it is disposed once binding is done —
+		// RemoteArguments only reads it during Invoke.
+		using JsonDocument? document = context.Request.Query.TryGetValue("args", out var raw) && raw.Count > 0
+			? TryParse(raw[0]!)
+			: null;
+		if (document is null && context.Request.Query.ContainsKey("args"))
+			return Results.Problem(detail: "Malformed args.", statusCode: StatusCodes.Status400BadRequest);
 
 		return await Run(descriptor, instance, new RemoteArguments
 		{
-			Json = json,
+			Json = document?.RootElement,
 			CancellationToken = context.RequestAborted,
 			Validation = BuildValidation(context.RequestServices, serviceType, descriptor)
 		});
@@ -75,25 +70,38 @@ internal static class SvelteRemoteEndpoints
 		if (!TryResolve(context, service, method, RemoteKind.Command, out var commandServiceType, out var commandDescriptor, out var commandInstance))
 			return Results.NotFound();
 
-		JsonElement? body = null;
-		if (context.Request.ContentLength != 0)
+		JsonDocument? body = null;
+		try
 		{
-			try
-			{
-				body = (await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)).RootElement;
-			}
-			catch (JsonException)
-			{
-				return Results.Problem(detail: "The JSON request body is malformed.", statusCode: StatusCodes.Status400BadRequest);
-			}
+			if (context.Request.ContentLength != 0)
+				body = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+		}
+		catch (JsonException)
+		{
+			return Results.Problem(detail: "The JSON request body is malformed.", statusCode: StatusCodes.Status400BadRequest);
 		}
 
-		return await Run(commandDescriptor, commandInstance, new RemoteArguments
+		using (body)
 		{
-			Json = body,
-			CancellationToken = context.RequestAborted,
-			Validation = BuildValidation(context.RequestServices, commandServiceType, commandDescriptor)
-		});
+			return await Run(commandDescriptor, commandInstance, new RemoteArguments
+			{
+				Json = body?.RootElement,
+				CancellationToken = context.RequestAborted,
+				Validation = BuildValidation(context.RequestServices, commandServiceType, commandDescriptor)
+			});
+		}
+	}
+
+	private static JsonDocument? TryParse(string json)
+	{
+		try
+		{
+			return JsonDocument.Parse(json);
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	private static async Task<IResult> Run(RemoteMethodDescriptor descriptor, object instance, RemoteArguments args)

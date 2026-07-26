@@ -1,0 +1,14 @@
+<Project>
+
+    <!-- Every packable project declares PackageReadmeFile (Directory.Build.props), so
+         each one needs the repo README at the package root. Imported after the project
+         file so $(IsPackable) is resolved. -->
+    <ItemGroup Condition="'$(IsPackable)' != 'false'">
+        <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(IsPackable)' != 'false'">
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
+    </ItemGroup>
+
+</Project>

@@ -13,19 +13,34 @@ public sealed record RemoteParameter(
 	ValidationAttribute[]? ValidationAttributes = null,
 	Type? FluentValidatorServiceType = null);
 
+/// <summary>
+/// One [Authorize] requirement lifted off a remote service or method, reduced to plain
+/// data so Core keeps no dependency on ASP.NET's authorization types. The host turns
+/// these into endpoint metadata and evaluates the identical set inside the SSR bridge —
+/// which is what stops the two transports from disagreeing about who may call a method.
+/// </summary>
+public sealed record RemoteAuthorization(
+	string? Policy = null,
+	string? Roles = null,
+	string? AuthenticationSchemes = null);
+
 public sealed record RemoteMethodDescriptor(
 	string Name,
 	RemoteKind Kind,
 	Func<object, RemoteArguments, ValueTask<object?>> Invoke,
 	Type ReturnType,
 	RemoteParameter[] Parameters,
-	string? TypeScriptReturnType = null);
+	string? TypeScriptReturnType = null,
+	RemoteAuthorization[]? Authorization = null,
+	bool AllowAnonymous = false);
 
 public sealed record RemoteServiceDescriptor(
 	string Name,
 	Type ServiceType,
 	RemoteMethodDescriptor[] Methods,
-	bool IsGenerated);
+	bool IsGenerated,
+	RemoteAuthorization[]? Authorization = null,
+	bool AllowAnonymous = false);
 
 /// <summary>
 /// Registration point for remote-service descriptors. The SvelteNet.Generators
@@ -48,6 +63,7 @@ public static class SvelteRemoteDescriptors
 	/// <summary>Reflection fallback, used when the source generator is not referenced.</summary>
 	public static RemoteServiceDescriptor FromReflection(Type serviceType)
 	{
+		var nullability = new NullabilityInfoContext();
 		var methods = serviceType
 			.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
 			.Where(m => !m.IsSpecialName)
@@ -62,7 +78,7 @@ public static class SvelteRemoteDescriptors
 					.Where(p => p.ParameterType != typeof(CancellationToken))
 						.Select(p =>
 						{
-							var nullable = new NullabilityInfoContext().Create(p).ReadState == NullabilityState.Nullable;
+							var nullable = nullability.Create(p).ReadState == NullabilityState.Nullable;
 							return new RemoteParameter(
 								p.Name!.ToCamelCase(),
 								p.ParameterType,
@@ -70,11 +86,46 @@ public static class SvelteRemoteDescriptors
 								nullable,
 								p.GetCustomAttributes<ValidationAttribute>(inherit: false).ToArray());
 						})
-						.ToArray()))
+						.ToArray(),
+				TypeScriptReturnType: null,
+				Authorization: AuthorizationOf(x.Method),
+				AllowAnonymous: HasAllowAnonymous(x.Method)))
 			.ToArray();
 
-		return new RemoteServiceDescriptor(serviceType.Name, serviceType, methods, IsGenerated: false);
+		return new RemoteServiceDescriptor(
+			serviceType.Name,
+			serviceType,
+			methods,
+			IsGenerated: false,
+			Authorization: AuthorizationOf(serviceType),
+			AllowAnonymous: HasAllowAnonymous(serviceType));
 	}
+
+	/// <summary>
+	/// Reads [Authorize] without referencing Microsoft.AspNetCore.Authorization — Core is
+	/// host-agnostic, so the attribute is matched by name and its well-known properties
+	/// are read reflectively. Behaviour must stay identical to the generated path.
+	/// </summary>
+	private static RemoteAuthorization[]? AuthorizationOf(MemberInfo member)
+	{
+		var found = member.GetCustomAttributes(inherit: true)
+			.Where(a => a.GetType().FullName == "Microsoft.AspNetCore.Authorization.AuthorizeAttribute")
+			.Select(a =>
+			{
+				var type = a.GetType();
+				return new RemoteAuthorization(
+					type.GetProperty("Policy")?.GetValue(a) as string,
+					type.GetProperty("Roles")?.GetValue(a) as string,
+					type.GetProperty("AuthenticationSchemes")?.GetValue(a) as string);
+			})
+			.ToArray();
+
+		return found.Length == 0 ? null : found;
+	}
+
+	private static bool HasAllowAnonymous(MemberInfo member) =>
+		member.GetCustomAttributes(inherit: true)
+			.Any(a => a.GetType().FullName == "Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute");
 
 	public static Type UnwrapReturnType(Type type)
 	{

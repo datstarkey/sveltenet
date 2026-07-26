@@ -95,14 +95,42 @@ public static class SvelteNetExtensions
 	/// [Query] over GET (?args= JSON), [Command] over POST JSON (X-SvelteNet header
 	/// required — CSRF defense, custom headers need a CORS preflight), and [Form]
 	/// over form POSTs (same-origin checked; without JS the browser is redirected back).
+	///
+	/// One endpoint is mapped per remote method rather than a single catch-all route, so
+	/// each method's own [Authorize]/[AllowAnonymous] becomes real endpoint metadata and
+	/// the standard authorization middleware enforces it. The SSR bridge evaluates the
+	/// same descriptor metadata, so both transports agree.
 	/// </summary>
 	public static IEndpointConventionBuilder MapSvelteRemote(this IEndpointRouteBuilder endpoints, string basePath = "/_sveltenet/remote")
 	{
+		var registry = endpoints.ServiceProvider.GetRequiredService<SvelteRemoteRegistry>();
 		var group = endpoints.MapGroup(basePath.TrimEnd('/'));
-		group.MapGet("/{service}/{method}", (string service, string method, HttpContext context) =>
-			SvelteRemoteEndpoints.HandleGet(service, method, context));
-		group.MapPost("/{service}/{method}", (string service, string method, HttpContext context) =>
-			SvelteRemoteEndpoints.HandlePost(service, method, context));
+
+		foreach (var service in registry.Services)
+		{
+			foreach (var method in service.Methods)
+			{
+				var route = $"/{service.Name}/{method.Name}";
+				var metadata = RemoteAuthorizationPolicy.ToMetadata(service, method).ToArray();
+				var serviceName = service.Name;
+				var methodName = method.Name;
+
+				// Typed as Delegate on purpose. A lambda taking only HttpContext also
+				// converts to RequestDelegate, and that overload wins — which would run the
+				// handler and silently throw away the IResult, answering 200 with no body.
+				Delegate handler = method.Kind == RemoteKind.Query
+					? (HttpContext context) => SvelteRemoteEndpoints.HandleGet(serviceName, methodName, context)
+					: (HttpContext context) => SvelteRemoteEndpoints.HandlePost(serviceName, methodName, context);
+
+				var endpoint = method.Kind == RemoteKind.Query
+					? group.MapGet(route, handler)
+					: group.MapPost(route, handler);
+
+				endpoint.WithName($"SvelteNet.Remote.{serviceName}.{methodName}");
+				if (metadata.Length > 0) endpoint.WithMetadata(metadata);
+			}
+		}
+
 		return group;
 	}
 }

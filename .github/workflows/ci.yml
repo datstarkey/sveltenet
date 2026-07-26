@@ -17,9 +17,13 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet restore SvelteNet.slnx
-      - run: dotnet test SvelteNet.slnx --no-restore --configuration Release
+      - run: dotnet test SvelteNet.slnx --no-restore --configuration Release --collect:"XPlat Code Coverage"
       - run: dotnet format SvelteNet.slnx --no-restore --verify-no-changes
+      # Every shipped package is packed, so missing metadata and broken pack paths
+      # fail CI rather than the release.
+      - run: dotnet pack src/SvelteNet.Core/SvelteNet.Core.csproj --no-restore --configuration Release
       - run: dotnet pack src/SvelteNet.AspNetCore/SvelteNet.AspNetCore.csproj --no-restore --configuration Release
+      - run: dotnet pack src/SvelteNet.FluentValidation/SvelteNet.FluentValidation.csproj --no-restore --configuration Release
 
   javascript:
     runs-on: ubuntu-latest

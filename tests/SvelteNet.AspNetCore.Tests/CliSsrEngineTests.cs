@@ -10,12 +10,19 @@ public class CliSsrEngineTests : IDisposable
 
 	public void Dispose() => Directory.Delete(_root, recursive: true);
 
+	/// <summary>
+	/// The CLI is probed on first render rather than in the constructor — resolving a
+	/// singleton from DI should not spawn a process — so the actionable error surfaces here.
+	/// </summary>
 	[Fact]
-	public void Missing_node_cli_has_an_actionable_error()
+	public async Task Missing_node_cli_has_an_actionable_error()
 	{
-		var exception = Assert.Throws<InvalidOperationException>(() => new NodeSsrEngine(
+		using var engine = new NodeSsrEngine(
 			new SvelteOptions { ContentRoot = _root },
-			new NodeSsrOptions { ExecutablePath = Path.Combine(_root, "missing-node") }));
+			new NodeSsrOptions { ExecutablePath = Path.Combine(_root, "missing-node") });
+
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+			await engine.RenderAsync("component.mjs", "render.mjs", null));
 
 		Assert.Contains("requires", exception.Message);
 		Assert.Contains("missing-node", exception.Message);
@@ -23,14 +30,25 @@ public class CliSsrEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Node_renderer_imports_built_modules_and_returns_the_result()
+	public void Constructing_the_engine_does_not_touch_the_cli()
+	{
+		// A bad executable path must not throw until something actually renders.
+		using var engine = new NodeSsrEngine(
+			new SvelteOptions { ContentRoot = _root },
+			new NodeSsrOptions { ExecutablePath = Path.Combine(_root, "missing-node") });
+
+		Assert.NotNull(engine);
+	}
+
+	[Fact]
+	public async Task Node_renderer_imports_built_modules_and_returns_the_result()
 	{
 		WriteModules();
-		var engine = new NodeSsrEngine(
+		using var engine = new NodeSsrEngine(
 			new SvelteOptions { ContentRoot = _root },
 			new NodeSsrOptions());
 
-		var result = engine.Render(
+		var result = await engine.RenderAsync(
 			"component.mjs",
 			"render.mjs",
 			"""{"message":"rendered by node"}""");
@@ -40,16 +58,16 @@ public class CliSsrEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Bun_renderer_imports_built_modules_and_returns_the_result_when_bun_is_available()
+	public async Task Bun_renderer_imports_built_modules_and_returns_the_result_when_bun_is_available()
 	{
 		if (!CanRun("bun")) return;
 
 		WriteModules();
-		var engine = new BunJsSsrEngine(
+		using var engine = new BunJsSsrEngine(
 			new SvelteOptions { ContentRoot = _root },
 			new BunJsSsrOptions());
 
-		var result = engine.Render(
+		var result = await engine.RenderAsync(
 			"component.mjs",
 			"render.mjs",
 			"""{"message":"rendered by bun"}""");
@@ -59,16 +77,34 @@ public class CliSsrEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Renderer_rejects_modules_outside_the_server_output()
+	public async Task Renderer_rejects_modules_outside_the_server_output()
 	{
-		var engine = new NodeSsrEngine(
+		using var engine = new NodeSsrEngine(
 			new SvelteOptions { ContentRoot = _root },
 			new NodeSsrOptions());
 
-		var exception = Assert.Throws<InvalidOperationException>(() =>
-			engine.Render("../outside.mjs", "render.mjs", null));
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+			await engine.RenderAsync("../outside.mjs", "render.mjs", null));
 
 		Assert.Contains("outside the server output", exception.Message);
+	}
+
+	/// <summary>Concurrent renders each get their own process and must not interleave output.</summary>
+	[Fact]
+	public async Task Concurrent_node_renders_return_their_own_results()
+	{
+		WriteModules();
+		using var engine = new NodeSsrEngine(
+			new SvelteOptions { ContentRoot = _root },
+			new NodeSsrOptions());
+
+		var renders = Enumerable.Range(0, 8).Select(async i =>
+		{
+			var result = await engine.RenderAsync("component.mjs", "render.mjs", $$"""{"message":"run-{{i}}"}""");
+			Assert.Equal($"<p>run-{i}</p>", result.Body);
+		});
+
+		await Task.WhenAll(renders);
 	}
 
 	[Fact]

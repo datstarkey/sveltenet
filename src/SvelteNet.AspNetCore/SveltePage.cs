@@ -19,6 +19,11 @@ using SvelteNet.TypeGen;
 /// In the .cshtml:
 ///     @Model.Svelte()               — container + SSR html + hydration script
 ///     @Model.SvelteHead()           — SSR head + stylesheet links (place in the head section)
+///
+/// A server render can await remote queries, so it happens asynchronously in the page
+/// filter, before the view executes. The synchronous accessors above then just emit the
+/// finished markup. Call <see cref="SvelteAsync"/> / <see cref="SvelteHeadAsync"/> when
+/// the filter has not run (a custom filter pipeline, or rendering outside a handler).
 /// </summary>
 public abstract class SveltePage : PageModel
 {
@@ -67,11 +72,31 @@ public abstract class SveltePage : PageModel
 		};
 	}
 
-	private SvelteRenderResult Rendered => _rendered ??= SvelteRenderer.Render(SvelteComponentOptions());
+	/// <summary>
+	/// Renders the page's component once per request and caches the result, so a
+	/// Svelte()/SvelteHead() pair shares a single render. Safe to call repeatedly.
+	/// </summary>
+	public async Task<SvelteRenderResult> PrepareAsync()
+	{
+		return _rendered ??= await SvelteRenderer.RenderAsync(SvelteComponentOptions()).ConfigureAwait(false);
+	}
+
+	private SvelteRenderResult Rendered =>
+		_rendered ?? throw new InvalidOperationException(
+			$"The Svelte component for '{GetType().FullName}' has not been rendered yet. Server rendering is " +
+			"asynchronous, so it runs in the page filter before the view executes. Use '@await Model.SvelteAsync()' " +
+			"and '@await Model.SvelteHeadAsync()' if this page overrides OnPageHandlerExecutionAsync without " +
+			"calling base, or renders outside the normal handler pipeline.");
 
 	public IHtmlContent Svelte() => new HtmlString(Rendered.Html);
 
 	public IHtmlContent SvelteHead() => new HtmlString(Rendered.Head);
+
+	/// <summary>Renders on demand — works regardless of whether the page filter ran.</summary>
+	public async Task<IHtmlContent> SvelteAsync() => new HtmlString((await PrepareAsync().ConfigureAwait(false)).Html);
+
+	/// <inheritdoc cref="SvelteAsync"/>
+	public async Task<IHtmlContent> SvelteHeadAsync() => new HtmlString((await PrepareAsync().ConfigureAwait(false)).Head);
 
 	/// <summary>True when the request came from the enhance() helper and expects JSON data.</summary>
 	protected bool IsEnhancedRequest => Request.Headers.ContainsKey("X-SvelteNet");
@@ -136,8 +161,15 @@ public abstract class SveltePage : PageModel
 		var executed = await next();
 		OnPageHandlerExecuted(executed);
 
-		if (!IsEnhancedRequest) return;
-		var replacement = CreateEnhancedResult(executed.Result);
-		if (replacement != null) executed.Result = replacement;
+		if (IsEnhancedRequest)
+		{
+			var replacement = CreateEnhancedResult(executed.Result);
+			if (replacement != null) executed.Result = replacement;
+			return;
+		}
+
+		// The view renders synchronously, so the (possibly awaiting) server render has to
+		// complete here, while there is still an async context to await on.
+		if (executed.Result is PageResult) await PrepareAsync().ConfigureAwait(false);
 	}
 }

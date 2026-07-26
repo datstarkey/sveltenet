@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 public class SvelteRenderer
 {
@@ -21,6 +20,31 @@ public class SvelteRenderer
 	public static readonly JsonSerializerOptions JsonOptions = SvelteJson.Options;
 
 	/// <summary>Renders a component with a SvelteKit-style single "data" prop.</summary>
+	public Task<SvelteRenderResult> RenderAsync(string component, object? data = null, string? elementId = null, CancellationToken cancellationToken = default)
+	{
+		return RenderAsync(new ComponentOptions
+		{
+			Component = component,
+			ElementId = elementId,
+			Props = data is null ? null : new Dictionary<string, object?> { ["data"] = data },
+			CancellationToken = cancellationToken
+		});
+	}
+
+	public async Task<SvelteRenderResult> RenderAsync(ComponentOptions component)
+	{
+		var plan = Plan(component);
+		var ssr = plan.SsrEnabled
+			? await RenderServerAsync(plan.ModuleKey, plan.PropsJson, component.CancellationToken).ConfigureAwait(false)
+			: null;
+		return Compose(plan, ssr);
+	}
+
+	/// <summary>
+	/// Client-only render. Server rendering can await remote queries, so it has no
+	/// synchronous form — when SSR is active for this component, use
+	/// <see cref="RenderAsync(ComponentOptions)"/> rather than blocking a request thread.
+	/// </summary>
 	public SvelteRenderResult Render(string component, object? data = null, string? elementId = null)
 	{
 		return Render(new ComponentOptions
@@ -31,36 +55,59 @@ public class SvelteRenderer
 		});
 	}
 
+	/// <inheritdoc cref="Render(string, object?, string?)"/>
 	public SvelteRenderResult Render(ComponentOptions component)
 	{
+		var plan = Plan(component);
+		if (plan.SsrEnabled)
+			throw new InvalidOperationException(
+				$"Server rendering '{component.Component}' requires the asynchronous API — a server render can await " +
+				"remote queries, and blocking a request thread on that work starves the thread pool. Use RenderAsync " +
+				"(Razor: '@await Html.SvelteAsync(...)' or '@await Model.SvelteAsync()'), or disable SSR for this " +
+				"component with ComponentOptions.Ssr = false.");
+
+		return Compose(plan, ssr: null);
+	}
+
+	/// <summary>True when a server render would run for this component — an engine is registered and enabled, and this is not dev mode.</summary>
+	public bool IsSsrEnabled(ComponentOptions component) =>
+		_ssrEngine is not null && (component.Ssr ?? _options.EnableSsr) && !_options.IsDev;
+
+	private readonly record struct RenderPlan(
+		string ModuleKey,
+		string ElementId,
+		string? PropsJson,
+		bool SsrEnabled,
+		bool CsrEnabled);
+
+	private RenderPlan Plan(ComponentOptions component)
+	{
 		var name = component.Component.Trim('/');
-		var moduleKey = $"{_options.PagesPath}/{name}.svelte";
-		var elementId = component.ElementId ?? "svelte-" + name.Replace('/', '-').ToLowerInvariant();
-		var propsJson = component.Props is null ? null : JsonSerializer.Serialize(component.Props, JsonOptions);
-		var encodedElementId = HtmlEncoder.Default.Encode(elementId);
+		return new RenderPlan(
+			ModuleKey: $"{_options.PagesPath}/{name}.svelte",
+			ElementId: component.ElementId ?? "svelte-" + name.Replace('/', '-').ToLowerInvariant(),
+			PropsJson: component.Props is null ? null : JsonSerializer.Serialize(component.Props, JsonOptions),
+			// SSR only runs against the built server bundle, so it is skipped in dev.
+			SsrEnabled: IsSsrEnabled(component),
+			CsrEnabled: component.Csr ?? _options.EnableCsr);
+	}
 
-		// SSR only runs against the built server bundle, so it is skipped in dev.
-		var ssrEnabled = _ssrEngine is not null
-			&& (component.Ssr ?? _options.EnableSsr)
-			&& !_options.IsDev;
-		var csrEnabled = component.Csr ?? _options.EnableCsr;
-
-		var ssr = ssrEnabled ? RenderServer(moduleKey, propsJson, component.CancellationToken) : null;
-
+	private SvelteRenderResult Compose(RenderPlan plan, SsrResult? ssr)
+	{
 		var html = new StringBuilder();
-		html.Append($"<div id=\"{encodedElementId}\">");
+		html.Append($"<div id=\"{HtmlEncoder.Default.Encode(plan.ElementId)}\">");
 		if (ssr is not null) html.Append(ssr.Body);
 		html.Append("</div>");
-		if (csrEnabled) html.Append(BuildClientScript(moduleKey, elementId, propsJson, hydrate: ssr is not null));
+		if (plan.CsrEnabled) html.Append(BuildClientScript(plan.ModuleKey, plan.ElementId, plan.PropsJson, hydrate: ssr is not null));
 
 		var head = new StringBuilder();
 		if (ssr?.Head is { Length: > 0 }) head.AppendLine(ssr.Head);
-		head.Append(GetCssLinks(moduleKey));
+		head.Append(GetCssLinks(plan.ModuleKey));
 
 		return new SvelteRenderResult { Html = html.ToString(), Head = head.ToString() };
 	}
 
-	private SsrResult? RenderServer(string moduleKey, string? propsJson, CancellationToken cancellationToken)
+	private async ValueTask<SsrResult> RenderServerAsync(string moduleKey, string? propsJson, CancellationToken cancellationToken)
 	{
 		var manifest = GetManifest(RenderType.Ssr);
 		var componentChunk = FindChunk(manifest, moduleKey)
@@ -68,7 +115,7 @@ public class SvelteRenderer
 		var renderChunk = FindChunk(manifest, _options.RenderModule)
 			?? throw new InvalidOperationException($"'{_options.RenderModule}' not found in the SSR manifest. Ensure it is included in the Vite SSR build inputs.");
 
-		return _ssrEngine!.Render(componentChunk.File!, renderChunk.File!, propsJson, cancellationToken);
+		return await _ssrEngine!.RenderAsync(componentChunk.File!, renderChunk.File!, propsJson, cancellationToken).ConfigureAwait(false);
 	}
 
 	private string BuildClientScript(string moduleKey, string elementId, string? propsJson, bool hydrate)
@@ -116,7 +163,7 @@ public class SvelteRenderer
 		if (_options.IsDev) return string.Empty; // the Vite dev server injects styles itself
 
 		var manifest = GetManifest(RenderType.Csr);
-		var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var visited = new HashSet<string>(StringComparer.Ordinal);
 		var css = new List<string>();
 
 		void Walk(string key)
@@ -133,12 +180,16 @@ public class SvelteRenderer
 		return string.Join(Environment.NewLine, css.Distinct().Select(c => $"<link rel=\"stylesheet\" href=\"{publicPath}/{c}\" />"));
 	}
 
+	/// <summary>
+	/// Manifest lookup is ordinal: on a case-sensitive file system 'Index.svelte' and
+	/// 'index.svelte' are different components, so a case-insensitive match could
+	/// silently render the wrong one. The 'name' fallback covers Vite's stable entry
+	/// names (sveltenet-client / sveltenet-ssr), which are not file paths.
+	/// </summary>
 	private static ViteChunk? FindChunk(ViteManifest manifest, string key)
 	{
 		if (manifest.TryGetValue(key, out var chunk)) return chunk;
-		return manifest.FirstOrDefault(k =>
-			k.Key.Equals(key, StringComparison.OrdinalIgnoreCase)
-			|| string.Equals(k.Value.Name, key, StringComparison.OrdinalIgnoreCase)).Value;
+		return manifest.FirstOrDefault(k => string.Equals(k.Value.Name, key, StringComparison.Ordinal)).Value;
 	}
 
 	private ViteManifest GetManifest(RenderType type)

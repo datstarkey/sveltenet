@@ -2,6 +2,7 @@ namespace SvelteNet.AspNetCore.Remote;
 
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using SvelteNet.Remote;
 
@@ -10,6 +11,12 @@ using SvelteNet.Remote;
 /// the SSR engine straight to the [Query] descriptors — no HTTP round-trip. Uses
 /// the current request's scope when available so scoped services behave normally.
 /// </summary>
+/// <remarks>
+/// Because this path skips routing, it also skips endpoint filters — so it enforces the
+/// descriptor's own authorization metadata itself. That metadata is the same data
+/// <see cref="SvelteNetExtensions.MapSvelteRemote"/> projects onto the HTTP endpoints,
+/// which is what keeps SSR and HTTP from disagreeing about who may call a query.
+/// </remarks>
 internal sealed class RemoteSsrFetchHandler(
 	SvelteRemoteRegistry registry,
 	IHttpContextAccessor httpContextAccessor,
@@ -17,61 +24,93 @@ internal sealed class RemoteSsrFetchHandler(
 {
 	private const string Prefix = "/_sveltenet/remote/";
 
-	public (int Status, string? Body) Handle(string url, string method)
+	public async ValueTask<SsrFetchResponse> HandleAsync(string url, string method, CancellationToken cancellationToken = default)
 	{
-		if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase)) return (405, null);
-		if (!url.StartsWith(Prefix, StringComparison.Ordinal)) return (404, null);
+		if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase)) return SsrFetchResponse.MethodNotAllowed;
+		if (!url.StartsWith(Prefix, StringComparison.Ordinal)) return SsrFetchResponse.NotFound;
 
 		var rest = url[Prefix.Length..];
 		string? argsJson = null;
 		var queryIndex = rest.IndexOf('?');
 		if (queryIndex >= 0)
 		{
-			var query = rest[(queryIndex + 1)..];
+			var parsed = QueryHelpers.ParseQuery(rest[(queryIndex + 1)..]);
 			rest = rest[..queryIndex];
-			foreach (var pair in query.Split('&'))
-			{
-				if (pair.StartsWith("args=", StringComparison.Ordinal))
-					argsJson = Uri.UnescapeDataString(pair["args=".Length..]);
-			}
+			if (parsed.TryGetValue("args", out var values) && values.Count > 0) argsJson = values[0];
 		}
 
 		var parts = rest.Split('/');
 		if (parts.Length != 2 ||
 			!registry.TryGet(parts[0], parts[1], out var service, out var descriptor) ||
 			descriptor.Kind != RemoteKind.Query)
-			return (404, null);
+			return SsrFetchResponse.NotFound;
 
-		var requestServices = httpContextAccessor.HttpContext?.RequestServices;
+		var httpContext = httpContextAccessor.HttpContext;
+		var requestServices = httpContext?.RequestServices;
 		using var fallbackScope = requestServices is null ? rootProvider.CreateScope() : null;
 		var provider = requestServices ?? fallbackScope!.ServiceProvider;
-		var instance = provider.GetRequiredService(service.ServiceType);
 
-		var args = new RemoteArguments
-		{
-			Json = argsJson is null ? null : JsonDocument.Parse(argsJson).RootElement,
-			Validation = SvelteRemoteEndpoints.BuildValidation(provider, service.ServiceType, descriptor),
-			CancellationToken = httpContextAccessor.HttpContext?.RequestAborted ?? default
-		};
-		object? result = null;
+		// Same policy the HTTP endpoint would apply. Without this, a query protected by
+		// [Authorize] would still run — and leak into the server-rendered HTML — for an
+		// anonymous visitor.
+		var authorization = await RemoteAuthorizationPolicy
+			.AuthorizeAsync(provider, httpContext, service, descriptor)
+			.ConfigureAwait(false);
+		if (authorization is not null) return authorization.Value;
+
+		JsonElement? args = null;
+		JsonDocument? argsDocument = null;
 		try
 		{
-			result = descriptor.Invoke(instance, args).AsTask().GetAwaiter().GetResult();
+			if (argsJson is not null)
+			{
+				argsDocument = JsonDocument.Parse(argsJson);
+				args = argsDocument.RootElement;
+			}
 		}
-		catch (SvelteValidationException invalid)
+		catch (JsonException)
 		{
-			SvelteRemoteEndpoints.ApplyValidationException(args, invalid);
+			argsDocument?.Dispose();
+			return new SsrFetchResponse(400, JsonSerializer.Serialize(new
+			{
+				title = "Malformed args.",
+				status = 400
+			}, SvelteJson.Options));
 		}
 
-		// Same RFC 9457 shape the HTTP endpoints produce, so the client transport
-		// parses SSR-bridged responses identically.
-		if (args.Errors is not null)
-			return (400, JsonSerializer.Serialize(new
+		using (argsDocument)
+		{
+			var instance = provider.GetRequiredService(service.ServiceType);
+			var arguments = new RemoteArguments
 			{
-				title = "One or more validation errors occurred.",
-				status = 400,
-				errors = args.Errors
-			}, SvelteJson.Options));
-		return result is null ? (204, null) : (200, JsonSerializer.Serialize(result, SvelteJson.Options));
+				Json = args,
+				Validation = SvelteRemoteEndpoints.BuildValidation(provider, service.ServiceType, descriptor),
+				CancellationToken = cancellationToken
+			};
+
+			object? result = null;
+			try
+			{
+				result = await descriptor.Invoke(instance, arguments).ConfigureAwait(false);
+			}
+			catch (SvelteValidationException invalid)
+			{
+				SvelteRemoteEndpoints.ApplyValidationException(arguments, invalid);
+			}
+
+			// Same RFC 9457 shape the HTTP endpoints produce, so the client transport
+			// parses SSR-bridged responses identically.
+			if (arguments.Errors is not null)
+				return new SsrFetchResponse(400, JsonSerializer.Serialize(new
+				{
+					title = "One or more validation errors occurred.",
+					status = 400,
+					errors = arguments.Errors
+				}, SvelteJson.Options));
+
+			return result is null
+				? SsrFetchResponse.NoContent
+				: SsrFetchResponse.Json(JsonSerializer.Serialize(result, SvelteJson.Options));
+		}
 	}
 }
