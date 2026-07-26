@@ -12,7 +12,7 @@ public static class TypeScriptExtensions
 		if (exportType.IsEnum)
 		{
 			var members = exportType.GetFields(BindingFlags.Public | BindingFlags.Static)
-				.Select(f => f.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? f.Name.ToCamelCase())
+				.Select(f => EnumMemberName(f))
 				.Select(s => $"'{s}'");
 			return $"export type {exportType.TsType()} = {string.Join(" | ", members)};";
 		}
@@ -86,6 +86,19 @@ export interface {{exportType.TsType()}} {
 		// A namespace-qualified stand-in; the scaffolder resolves it to the final name
 		// once it can see every application assembly. See TypeScriptNaming.
 		return TypeScriptNaming.Placeholder(stripped);
+	}
+
+	/// <summary>
+	/// The name the serializer emits for an enum member. [JsonStringEnumMemberName] only
+	/// exists from .NET 9, so on earlier targets the naming policy is the whole story.
+	/// </summary>
+	private static string EnumMemberName(FieldInfo field)
+	{
+#if NET9_0_OR_GREATER
+		return field.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? field.Name.ToCamelCase();
+#else
+		return field.Name.ToCamelCase();
+#endif
 	}
 
 	private static bool IsAlwaysIgnored(PropertyInfo property)

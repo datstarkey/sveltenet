@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
         <RootNamespace>SvelteNet.AspNetCore</RootNamespace>
         <Title>SvelteNet.AspNetCore</Title>
         <Description>Svelte 5 islands for ASP.NET Razor Pages and MVC, with typed props</Description>
+        <!-- Must match SvelteNet.Build's TargetFramework and the targets file. -->
+        <SvelteNetBuildToolTfm>net8.0</SvelteNetBuildToolTfm>
     </PropertyGroup>
 
     <ItemGroup>
@@ -26,26 +28,49 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\SvelteNet.Generators\bin\$(Configuration)\netstandard2.0\SvelteNet.Generators.dll"
-              Pack="true"
-              PackagePath="analyzers\dotnet\cs"
-              Visible="false" />
         <None Include="..\SvelteNet.Build\SvelteNet.Build.targets"
               Pack="true"
               PackagePath="build\SvelteNet.AspNetCore.targets"
               Visible="false" />
-        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.dll"
-              Pack="true"
-              PackagePath="tools\net10.0\any"
-              Visible="false" />
-        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.deps.json"
-              Pack="true"
-              PackagePath="tools\net10.0\any"
-              Visible="false" />
-        <None Include="..\SvelteNet.Build\bin\$(Configuration)\net10.0\SvelteNet.Build.runtimeconfig.json"
-              Pack="true"
-              PackagePath="tools\net10.0\any"
-              Visible="false" />
     </ItemGroup>
+
+    <!-- The analyzer and the build-time tool are resolved from the referenced projects'
+         real outputs rather than a guessed bin/$(Configuration)/<tfm> path, which broke
+         under ArtifactsPath, a custom BaseOutputPath, or any build-order variation - and
+         did so by silently producing a package with no analyzer in it. -->
+    <Target Name="SvelteNetResolvePackedTooling" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+        <MSBuild Projects="..\SvelteNet.Generators\SvelteNet.Generators.csproj"
+                 Targets="GetTargetPath"
+                 Properties="Configuration=$(Configuration)">
+            <Output TaskParameter="TargetOutputs" ItemName="_SvelteNetAnalyzer" />
+        </MSBuild>
+        <MSBuild Projects="..\SvelteNet.Build\SvelteNet.Build.csproj"
+                 Targets="GetTargetPath"
+                 Properties="Configuration=$(Configuration)">
+            <Output TaskParameter="TargetOutputs" ItemName="_SvelteNetBuildTool" />
+        </MSBuild>
+
+        <PropertyGroup>
+            <_SvelteNetBuildToolDir>%(_SvelteNetBuildTool.RootDir)%(_SvelteNetBuildTool.Directory)</_SvelteNetBuildToolDir>
+        </PropertyGroup>
+
+        <Error Condition="'@(_SvelteNetAnalyzer)' == ''"
+               Text="The SvelteNet.Generators analyzer was not produced. The package would ship without source generation." />
+        <Error Condition="!Exists('$(_SvelteNetBuildToolDir)SvelteNet.Build.dll')"
+               Text="SvelteNet.Build.dll was not produced at '$(_SvelteNetBuildToolDir)'. The package would ship without build-time type generation." />
+
+        <ItemGroup>
+            <None Include="@(_SvelteNetAnalyzer)"
+                  Pack="true"
+                  PackagePath="analyzers\dotnet\cs"
+                  Visible="false" />
+            <None Include="$(_SvelteNetBuildToolDir)SvelteNet.Build.dll;
+                           $(_SvelteNetBuildToolDir)SvelteNet.Build.deps.json;
+                           $(_SvelteNetBuildToolDir)SvelteNet.Build.runtimeconfig.json"
+                  Pack="true"
+                  PackagePath="tools\$(SvelteNetBuildToolTfm)\any"
+                  Visible="false" />
+        </ItemGroup>
+    </Target>
 
 </Project>

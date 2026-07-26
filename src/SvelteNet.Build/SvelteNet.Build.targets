@@ -14,8 +14,9 @@
         <SvelteNetPagesPath Condition="'$(SvelteNetPagesPath)' == ''">Svelte</SvelteNetPagesPath>
         <SvelteNetClientOutput Condition="'$(SvelteNetClientOutput)' == ''">wwwroot/client</SvelteNetClientOutput>
         <SvelteNetServerOutput Condition="'$(SvelteNetServerOutput)' == ''">.svelte-net/server</SvelteNetServerOutput>
-        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\net10.0\any\SvelteNet.Build.dll')">$(MSBuildThisFileDirectory)..\tools\net10.0\any\SvelteNet.Build.dll</SvelteNetBuildTool>
-        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == ''">$(MSBuildThisFileDirectory)bin\$(Configuration)\net10.0\SvelteNet.Build.dll</SvelteNetBuildTool>
+        <SvelteNetBuildToolTfm>net8.0</SvelteNetBuildToolTfm>
+        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == '' and Exists('$(MSBuildThisFileDirectory)..\tools\$(SvelteNetBuildToolTfm)\any\SvelteNet.Build.dll')">$(MSBuildThisFileDirectory)..\tools\$(SvelteNetBuildToolTfm)\any\SvelteNet.Build.dll</SvelteNetBuildTool>
+        <SvelteNetBuildTool Condition="'$(SvelteNetBuildTool)' == ''">$(MSBuildThisFileDirectory)bin\$(Configuration)\$(SvelteNetBuildToolTfm)\SvelteNet.Build.dll</SvelteNetBuildTool>
     </PropertyGroup>
 
     <!-- Inputs/Outputs make this incremental. Without them every build - and every
