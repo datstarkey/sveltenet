@@ -8,10 +8,10 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
-    "svelte": "^5.46.0",
-    "svelte-check": "^4.3.4",
+    "svelte": "^5.56.8",
+    "svelte-check": "^4.7.4",
     "sveltenet": "*",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5"
+    "vite": "^8.2.0"
   }
 }
