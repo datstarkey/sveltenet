@@ -11,7 +11,7 @@
     "svelte": "^5.46.0",
     "svelte-check": "^4.3.4",
     "sveltenet": "*",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.5"
   }
 }
